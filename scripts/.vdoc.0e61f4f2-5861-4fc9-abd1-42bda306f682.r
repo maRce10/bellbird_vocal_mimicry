@@ -1,0 +1,497 @@
+#
+#
+#
+#
+#
+install_and_load <- function(packages, repos = "https://cloud.r-project.org") {
+  missing <- packages[!vapply(packages, requireNamespace, logical(1), quietly = TRUE)]
+
+  if (length(missing) > 0) {
+    install.packages(missing, repos = repos)
+  }
+
+  invisible(lapply(packages, library, character.only = TRUE))
+}
+
+install_and_load(c(
+  "ggplot2",
+  "plotly",
+  "Rraven",
+  "warbleR",
+  "mclust",
+  "viridis"
+))
+
+#
+#
+#
+#
+est <- readRDS(
+  "./data/processed/extended_selection_table_sympatric_and_allopatric_species.RDS"
+)
+embs <- read.csv("./data/processed/clips_with_advanced_clusters.csv")
+
+#
+#
+#
+#
+embs$ID <- ifelse(embs$folder_id == "sympatrics_and_allopatrics_2s",
+                 "others",
+                 "Three-wattled Bellbird")
+
+#embs$ID <- ifelse(embs$ID == "others",
+#                  sapply(embs$clip_id, function(x) {
+#                    parts <- strsplit(x, "-")[[1]]
+#                    if (length(parts) > 1) gsub("_", " ", parts[1]) else "Three-wattled Bellbird"
+#                  }),
+#                  embs$ID)
+
+#GET THE FILE NAMES TO MATCH
+est$record <- gsub("\\.Table\\.1\\.selections\\.txt$", "", est$selec.file)
+embs$record <- sapply(embs$clip_id, function(x) strsplit(x, ".", fixed = TRUE)[[1]][1])
+
+
+#RUN THE MATCH
+
+embs$ID <- ifelse(embs$ID == "others",
+                  sapply(embs$record, function(x) est$Model.species[est$record == x][1]),
+                  embs$ID)
+
+#target
+embs$focal <- ifelse(embs$ID == "Three-wattled Bellbird",
+                      ifelse(embs$folder_id == "other_bellbirds", "no", "yes"),
+                      "no")
+
+embs$ID[embs$ID == "Procnias tricarunculatus"] <- "Three-wattled Bellbird"
+
+table(embs$ID, embs$focal)
+
+
+#ADD LABELS OF IMMITATION
+embs$targetmimicry <- sapply(embs$record, function(x) est$Vocalization[est$record == x][1])
+
+embs$targetmimicry[embs$targetmimicry == "Procnias tricarunculatus"] <- "Three-wattled Bellbird"
+
+embs$targetmimicry[embs$targetmimicry == "Monteverde"] <- "Three-wattled Bellbird"
+embs$targetmimicry[embs$targetmimicry == "Nicaraguan"] <- "Three-wattled Bellbird"
+embs$targetmimicry[embs$targetmimicry == "Panama"] <- "Three-wattled Bellbird"
+embs$targetmimicry[embs$targetmimicry == "Talamancan"] <- "Three-wattled Bellbird"
+embs$targetmimicry[embs$targetmimicry == "Psarocolius montezuma"] <- "Montezuma Oropendola"
+embs$targetmimicry[embs$targetmimicry == "Pteroglossus torquatus"] <- "Collared Aracari"
+embs$targetmimicry[embs$targetmimicry == "Ramphastos sulfuratus"] <- "Keel-billed Toucan"
+
+embs$targetmimicry <- ifelse(embs$folder_id == "other_bellbirds", NA, embs$targetmimicry)
+table(embs$targetmimicry)
+
+#sanity check
+length(embs$focal[embs$focal == "yes"]) == length(embs$targetmimicry[!is.na(embs$targetmimicry)])
+embs[setdiff(which(embs$focal == "yes"), which(!is.na(embs$targetmimicry))), ]
+
+#stablish no imitation for the rest of the clips
+embs$targetmimicry[is.na(embs$targetmimicry)] <- "No imitation"
+embs$targetmimicry[embs$targetmimicry == "Three-wattled Bellbird"] <- "No imitation"
+#
+#
+#
+#
+#
+gmm <- Mclust(embs[, c("umap1", "umap2")], G= 1:length(unique(embs$ID)))
+embs$gmm_cluster <- factor(gmm$classification)
+
+summary(gmm)
+#
+#
+#
+#
+#
+#assign one color per genus (so species in the same genus share a shade),
+#with the focal species called out in tomato
+others <- setdiff(unique(embs$ID), "Three-wattled Bellbird")
+genus <- sapply(strsplit(others, " "), `[`, 1)
+
+mako_cols <- setNames(mako(length(unique(genus)), alpha = 0.4, begin = 0.2, end = 0.8), unique(genus))
+cols <- setNames(mako_cols[genus], others)
+cols["Three-wattled Bellbird"] <- adjustcolor("tomato", alpha.f = 0.4)
+
+mako_cols2 <- setNames(mako(length(unique(genus)), alpha = 0.9, begin = 0.2, end = 0.8), unique(genus))
+cols2 <- setNames(mako_cols2[genus], others)
+cols2["Three-wattled Bellbird"] <- adjustcolor("tomato", alpha.f = 0.9)
+
+shapes <- c(16, 16, 16, 1, 17, 2, 15, 0)
+
+
+ggplot(embs, aes(x = umap1, y = umap2, color = ID, shape = gmm_cluster)) +
+  geom_point(size = 2, alpha = .4) +
+  theme_minimal() +
+  labs(x = "UMAP 1", y = "UMAP 2", color = "", shape = "") +
+    scale_color_manual(values = cols) +
+    scale_shape_manual(values = shapes) +
+    theme_classic()
+
+#
+#
+#
+#
+#
+others <- setdiff(unique(embs$ID), "Three-wattled Bellbird")
+genus <- sapply(strsplit(others, " "), `[`, 1)
+
+embs$mimicry_evidence <- factor(
+  ifelse(embs$targetmimicry == "No imitation", "No evidence", "Evidence"),
+  levels = c("No evidence", "Evidence")
+)
+base_plot <- ggplot(embs, aes(x = umap1, y = umap2, color = ID, shape = mimicry_evidence, alpha = mimicry_evidence)) +
+  geom_point(size = 2) +
+  theme_minimal() +
+  labs(
+    x = "UMAP 1", y = "UMAP 2",
+    color = "Emitter",
+    shape = "Mimicry"
+  ) +
+  viridis::scale_color_viridis(discrete = TRUE, option = "G", begin = 0.2, end = 0.8) +
+  scale_shape_manual(values = c("No evidence" = 3, "Evidence" = 2)) +
+  scale_alpha_manual(values = c("No evidence" = 0.4, "Evidence" = 1), guide = "none") +
+  theme_classic()
+
+base_plot
+
+for (id in unique(embs$ID)) {
+  sub <- embs[embs$ID == id, ]
+  print(
+    base_plot +
+      coord_cartesian(xlim = range(sub$umap1), ylim = range(sub$umap2)) +
+      labs(title = id)
+  )
+}
+
+for (id in unique(embs$ID)) {
+  sub <- embs[embs$ID == id, ]
+  print(
+    base_plot +
+      coord_cartesian(xlim = range(sub$umap1), ylim = range(sub$umap2)) +
+      labs(title = id)
+  )
+}
+
+#
+#
+#
+#
+#
+#
+install_and_load(c(
+  "ggplot2",
+  "Rraven",
+  "warbleR",
+  "viridis",
+  "seewave",
+  "tuneR",
+  "patchwork",
+  "png",
+  "jpeg"
+))
+#
+#
+#
+#
+#
+# spectrogram colours: a viridis option ("mako", same as the UMAP plots above,
+# "magma", "inferno", "plasma", "viridis", "cividis", "rocket", "turbo"),
+# trimmed with begin/end (0-1) and flipped with direction = -1; or set `custom`
+# to your own colours, low -> high, e.g. c("white", "steelblue", "black")
+spectro_palette <- list(
+  option = "mako", begin = 0.2, end = 1, direction = 1, alpha = 0.9,
+  custom = NULL
+)
+
+
+
+
+make_spectro_colors <- function(p) {
+  p <- modifyList(spectro_palette, as.list(p))
+  if (!is.null(p$custom)) return(grDevices::colorRampPalette(p$custom)(256))
+  viridisLite::viridis(256, alpha = p$alpha, begin = p$begin, end = p$end,
+                       direction = p$direction, option = p$option)
+}
+spectro_colors <- make_spectro_colors(spectro_palette)
+
+
+
+
+
+# spectrogram settings, overridable per row through `spectro` in `rows`
+spectro_defaults <- list(
+  wl = 512, # FFT window length (samples)
+  ovlp = 90, # % overlap between windows
+  dB = "max0",
+  amp_limits = c(-60, 0), # dB range mapped onto the colormap
+  highpass_hz = 1200, # ffilter highpass cutoff (Hz)
+  interpolate = TRUE,
+  colors = spectro_colors
+)
+
+# CABBM, RSBBM and BBS are hand-edited excerpts with recorder noise above their
+# call band; lowpass them just above their real content
+wav_lowpass_hz <- list("CABBM.wav" = 8000, "RSBBM.wav" = 8000, "BBS.wav" = 7000)
+
+
+
+
+# PhyloPic cutouts (grayscale + alpha PNGs)
+silhouettes <- c(
+  "Three-wattled Bellbird" = "./data/raw/figure_audios&pictures/Edwin Prince.png",
+  "Montezuma Oropendola"   = "./data/raw/figure_audios&pictures/Ferran Sayol.png",
+  "Collared Aracari"       = "./data/raw/figure_audios&pictures/Edwin Price2.png",
+  "Keel-billed Toucan"     = "./data/raw/figure_audios&pictures/Gabriela Palomo-Munoz.png"
+)
+
+# photos are centre-cropped to the rendered cell's width/height ratio, measured
+# for the 11 x 8.5 in ggsave below; re-measure if the figure size changes
+photo_aspect <- 1.73
+
+# panel letter inside the top-right corner, mirroring the cutout on the left
+tag_theme <- function(colour) {
+  theme(
+    plot.tag = element_text(size = 16, face = "bold", colour = colour, hjust = 1, vjust = 1),
+    plot.tag.position = c(0.98, 0.97),
+    plot.tag.location = "panel"
+  )
+}
+
+# drop the x break on a panel's right edge so it doesn't collide with the next
+# panel's first label
+edge_safe_breaks <- function(limits) {
+  b <- scales::breaks_pretty()(limits)
+  b[b <= limits[2] - 0.04 * diff(limits)]
+}
+
+crop_to_aspect <- function(img, aspect) {
+  h <- dim(img)[1]
+  w <- dim(img)[2]
+  if (w / h > aspect) {
+    keep <- round(h * aspect)
+    off <- floor((w - keep) / 2)
+    img[, (off + 1):(off + keep), , drop = FALSE]
+  } else {
+    keep <- round(w / aspect)
+    off <- floor((h - keep) / 2)
+    img[(off + 1):(off + keep), , , drop = FALSE]
+  }
+}
+
+
+make_spectro_panel <- function(wav_path, start, dur, flim, silhouette, spec = NULL) {
+  spec <- modifyList(spectro_defaults, as.list(spec))
+
+  # read the window (or as much of it as the file has), filter it, and pad the
+  # end with silence so every panel spans the full shared window
+  hdr <- readWave(wav_path, header = TRUE)
+  w <- readWave(wav_path, from = start, to = min(start + dur, hdr$samples / hdr$sample.rate),
+                units = "seconds")
+  w <- ffilter(w, f = w@samp.rate, from = spec$highpass_hz,
+               to = wav_lowpass_hz[[basename(wav_path)]], output = "Wave")
+  pad <- round(dur * w@samp.rate) - length(w@left)
+  if (pad > 0) {
+    w <- bind(w, silence(duration = pad, samp.rate = w@samp.rate, bit = w@bit,
+                         pcm = w@pcm, xunit = "samples"))
+  }
+
+  s <- spectro(w, f = w@samp.rate, wl = spec$wl, ovlp = spec$ovlp, flim = flim,
+               dB = spec$dB, plot = FALSE)
+  df <- data.frame(
+    time = rep(s$time, each = length(s$freq)),
+    freq = rep(s$freq, times = length(s$time)),
+    amp = as.vector(s$amp)
+  )
+  df$amp[!is.finite(df$amp)] <- -999 # padded silence -> bottom of the colour scale
+
+  # cutout redrawn in white from its alpha channel, sized in inches so it keeps
+  # its proportions whatever the panel's shape
+  alpha <- png::readPNG(silhouette)[, , 2]
+  sil <- array(c(rep(1, 3 * length(alpha)), alpha), dim = c(dim(alpha), 4))
+  sil_h <- 0.42
+  sil_w <- sil_h * ncol(alpha) / nrow(alpha)
+
+  ggplot(df, aes(time, freq, fill = amp)) +
+    geom_raster(interpolate = spec$interpolate) +
+    scale_fill_gradientn(colors = spec$colors, limits = spec$amp_limits,
+                         oob = scales::squish) +
+    annotation_custom(grid::rasterGrob(
+      sil, x = unit(0.02, "npc"), y = unit(0.97, "npc"),
+      width = unit(sil_w, "in"), height = unit(sil_h, "in"),
+      just = c("left", "top"), interpolate = TRUE
+    )) +
+    scale_x_continuous(breaks = edge_safe_breaks) +
+    coord_cartesian(xlim = c(0, dur), ylim = flim, expand = FALSE) +
+    labs(x = "Time (s)", y = "Frequency (kHz)") +
+    theme_classic(base_size = 9) +
+    theme(legend.position = "none") +
+    tag_theme("white")
+}
+
+make_picture_panel <- function(img_path) {
+  img <- crop_to_aspect(jpeg::readJPEG(img_path), photo_aspect)
+
+  ggplot() +
+    annotation_custom(grid::rasterGrob(img, width = unit(1, "npc"),
+                                       height = unit(1, "npc"), interpolate = TRUE)) +
+    coord_cartesian(xlim = c(0, 1), ylim = c(0, 1), expand = FALSE) +
+    theme_void() +
+    tag_theme("grey15")
+}
+
+# One entry per row. The imitated windows are in the excerpt files' own time;
+# model `start` is where that panel's window begins. `spectro` overrides
+# spectro_defaults for both panels of the row.
+rows <- list(
+  list(
+    species = "Montezuma Oropendola",
+    imitated = list(wav = "./data/raw/figure_audios&pictures/OBBM.wav", tlim = c(1.6, 3.0)),
+    model = list(wav = "./data/raw/figure_audios&pictures/Psarocolius-montezuma-106662_.wav", start = 11.3),
+    # noisiest pair (96 kHz, distant bird): longer FFT window, higher floor
+    spectro = list(wl = 1024, amp_limits = c(-45, 0)),
+    picture = "./data/raw/figure_audios&pictures/DSCN8088.JPG"
+  ),
+  list(
+    species = "Collared Aracari",
+    imitated = list(wav = "./data/raw/figure_audios&pictures/CABBM.wav", tlim = c(0, 6.40)),
+    model = list(
+      wav = "./data/processed/example_spectrogram_annotations/models/Pteroglossus-torquatus-154157_.wav",
+      start = 5.5
+    ),
+    picture = "./data/raw/figure_audios&pictures/celluloid-shot0003.jpg"
+  ),
+  list(
+    species = "Keel-billed Toucan",
+    imitated = list(wav = "./data/raw/figure_audios&pictures/RSBBM.wav", tlim = c(0, 4.22)),
+    model = list(
+      wav = "./data/processed/example_spectrogram_annotations/models/Ramphastos-sulfuratus-137713_.wav",
+      start = 0
+    ),
+    picture = "./data/raw/figure_audios&pictures/DSCN7194.JPG"
+  ),
+  list(
+    species = "Three-wattled Bellbird",
+    # own song, not mimicry
+    imitated = list(wav = "./data/raw/figure_audios&pictures/BBS.wav", tlim = c(0, 2.77)),
+    model = list(wav = "./data/raw/recordings/Procnias-tricarunculatus-30207.wav", start = 1.4),
+    picture = "./data/raw/figure_audios&pictures/DSCN7233.JPG"
+  )
+)
+
+# one shared axis for the whole figure: every panel shows `shared_dur` seconds
+# from its own start (a single length, not a range), over 0-10 kHz
+shared_dur <- 5
+shared_flim <- c(0, 10)
+
+# per row: bellbird imitation, model species, photo
+panels <- list()
+for (r in rows) {
+  panels <- c(panels, list(
+    make_spectro_panel(r$imitated$wav, r$imitated$tlim[1], shared_dur, shared_flim,
+                       silhouettes[["Three-wattled Bellbird"]], r$spectro),
+    make_spectro_panel(r$model$wav, r$model$start, shared_dur, shared_flim,
+                       silhouettes[[r$species]], r$spectro),
+    make_picture_panel(r$picture)
+  ))
+}
+
+# outer axes and a single pair of axis titles only; zero margins so panels touch
+composite_fig <- patchwork::wrap_plots(panels, ncol = 3) +
+  patchwork::plot_layout(axis_titles = "collect", axes = "collect") +
+  patchwork::plot_annotation(tag_levels = "A") &
+  theme(plot.margin = margin(0, 0, 0, 0))
+composite_fig
+
+ggsave("./output/mimicry_composite_figure.png", composite_fig, width = 11, height = 8.5, dpi = 300)
+#
+#
+#
+#
+#| eval: false
+# Render one row's two spectrograms once per palette, stacked, into a small PNG
+# (open it in VS Code; the tab refreshes on every re-run). Each palette only
+# lists what differs from `spectro_palette`. Copy the winner into
+# `spectro_palette` above and re-run the figure chunk.
+preview_palettes <- function(palettes, row = 1, file = "./output/palette_preview.png") {
+  r <- rows[[row]]
+  plots <- list()
+  for (nm in names(palettes)) {
+    spec <- modifyList(as.list(r$spectro), list(colors = make_spectro_colors(palettes[[nm]])))
+    plots <- c(plots, list(
+      make_spectro_panel(r$imitated$wav, r$imitated$tlim[1], shared_dur, shared_flim,
+                         silhouettes[["Three-wattled Bellbird"]], spec) + labs(tag = nm),
+      make_spectro_panel(r$model$wav, r$model$start, shared_dur, shared_flim,
+                         silhouettes[[r$species]], spec)
+    ))
+  }
+  fig <- patchwork::wrap_plots(plots, ncol = 2) &
+    theme(plot.tag = element_text(size = 10, face = "bold", colour = "white", hjust = 1))
+  ggsave(file, fig, width = 9, height = 2 * length(palettes), dpi = 120)
+  invisible(fig)
+}
+
+preview_palettes(list(
+  current = list(),
+  mako_full = list(begin = 0, end = 1, alpha = 1),
+  magma = list(option = "magma", begin = 0, end = 0.95, alpha = 1),
+  inferno = list(option = "inferno", begin = 0, end = 0.95, alpha = 1),
+  greys = list(custom = c("white", "grey55", "black"))
+), row = 2)
+#
+#
+#
+#
+#
+#
+#
+plot_ly() |>
+  add_trace(
+    data = embs[embs$ID != "Three-wattled Bellbird", ],
+    x = ~umap1, y = ~umap2, z = ~umap3,
+    color = ~ID,
+    type = "scatter3d",
+    mode = "markers",
+    marker = list(size = 3, opacity = .7)
+  ) |>
+  add_trace(
+    data = embs[embs$ID == "Three-wattled Bellbird", ],
+    x = ~umap1, y = ~umap2, z = ~umap3,
+    color = ~ID,
+    type = "scatter3d",
+    mode = "markers",
+    marker = list(size = 3, opacity = .3)
+  ) |>
+  layout(
+    scene = list(
+      xaxis = list(title = "UMAP 1"),
+      yaxis = list(title = "UMAP 2"),
+      zaxis = list(title = "UMAP 3")
+    ),
+    legend = list(font = list(size = 20), itemsizing = "constant")
+  )
+
+#
+#
+#
+#
+plot_ly(
+  embs,
+  x = ~tsne1, y = ~tsne2, z = ~tsne3,
+  color = ~gmm_cluster,
+  type = "scatter3d",
+  mode = "markers",
+  marker = list(size = 3, opacity = .7)
+) |>
+  layout(
+    title = "Gaussian Mixture Clusters (t-SNE space)",
+    scene = list(
+      xaxis = list(title = "t-SNE 1"),
+      yaxis = list(title = "t-SNE 2"),
+      zaxis = list(title = "t-SNE 3")
+    ),
+    legend = list(font = list(size = 20), itemsizing = "constant")
+  )
+#
+#
+#

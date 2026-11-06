@@ -1,0 +1,21 @@
+"pred","Freq","model","bird","total"
+"nocall",2266,"sympatric_allopatric","focal",3394
+"Procnias tricarunculatus",572,"sympatric_allopatric","focal",3394
+"Psarocolius montezuma",7,"sympatric_allopatric","focal",3394
+"Pteroglossus erythropygius",29,"sympatric_allopatric","focal",3394
+"Pteroglossus torquatus",123,"sympatric_allopatric","focal",3394
+"Ramphastos brevis",9,"sympatric_allopatric","focal",3394
+"Ramphastos sulfuratus",388,"sympatric_allopatric","focal",3394
+"nocall",186,"sympatric_allopatric","other",981
+"Procnias tricarunculatus",785,"sympatric_allopatric","other",981
+"Psarocolius montezuma",1,"sympatric_allopatric","other",981
+"Ramphastos brevis",9,"sympatric_allopatric","other",981
+"nocall",969,"sympatric","focal",2445
+"Procnias tricarunculatus",632,"sympatric","focal",2445
+"Psarocolius montezuma",48,"sympatric","focal",2445
+"Pteroglossus torquatus",216,"sympatric","focal",2445
+"Ramphastos sulfuratus",580,"sympatric","focal",2445
+"nocall",32,"sympatric","other",831
+"Procnias tricarunculatus",793,"sympatric","other",831
+"Psarocolius montezuma",4,"sympatric","other",831
+"Ramphastos sulfuratus",2,"sympatric","other",831

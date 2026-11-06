@@ -1,0 +1,42 @@
+project:
+  type: website
+  output-dir: _site
+  render:
+    - index.qmd
+    - presentacion.qmd
+    - scripts/birdnet_acoustic_data_prep.qmd
+    - scripts/statistical_analysis.qmd
+  resources:
+    - presentation/presentation.html
+
+execute:
+  freeze: auto
+
+website:
+  title: "Mimetismo vocal en el pájaro campana"
+  site-url: https://marce10.github.io/bellbird-mimicry/
+  repo-url: https://github.com/maRce10/bellbird-mimicry
+  page-navigation: true
+  navbar:
+    background: "#ffffff"
+    foreground: "#408AB4"
+    left:
+      - href: index.qmd
+        text: Inicio
+      - href: scripts/birdnet_acoustic_data_prep.qmd
+        text: Datos
+      - href: scripts/statistical_analysis.qmd
+        text: Análisis
+      - href: presentacion.qmd
+        text: Presentación
+    right:
+      - icon: github
+        href: https://github.com/maRce10/bellbird-mimicry
+        aria-label: Repositorio en GitHub
+
+format:
+  html:
+    theme: cosmo
+    lang: es
+    css: styles.css
+    include-after-body: _figure-download.html

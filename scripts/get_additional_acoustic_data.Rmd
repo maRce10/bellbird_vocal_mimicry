@@ -1,0 +1,86 @@
+---
+title: "Get additional aoustic data"
+output: html_document
+editor_options: 
+  chunk_output_type: console
+---
+
+```{r setup, include=FALSE}
+
+# download p tricarunculatus
+library(warbleR)
+
+# download p tricarunculatus
+pt <- querxc("Procnias tricarunculatus", download = TRUE, path = "./data/raw/recordings/p_tricarunculatus_XC")
+
+write.csv(pt, "./data/raw/recordings/p_tricarunculatus_XC.csv", row.names = FALSE)
+
+mp32wav(path = "./data/raw/recordings/p_tricarunculatus_XC")
+
+check_sound_files(path = "./data/raw/recordings/p_tricarunculatus_XC")
+
+```
+
+```{r download model species}
+
+# Pteroglossus torquatus
+
+pt <- query_xc("Pteroglossus torquatus", download = FALSE)
+
+pt_cr <- pt[pt$Country == "Costa Rica", ] 
+
+table(pt_cr$Locality)
+
+query_xc(X = pt_cr, path = "./data/raw/recordings/model_species_XC")
+
+
+# Ramphastos sulfuratus
+
+rs <- query_xc("Ramphastos sulfuratus", download = FALSE)
+
+table(rs$Country)
+
+rs_cr <- rs[rs$Country == "Costa Rica", ] 
+
+table(rs_cr$Quality)
+
+rs_cr <- rs_cr[rs_cr$Quality %in% c("A", "B"), ]
+
+query_xc(X = rs_cr, path = "./data/raw/recordings/model_species_XC")
+
+
+# Psarocolius montezuma
+
+pm <- query_xc("Psarocolius montezuma", download = FALSE)
+
+table(pm$Country)
+
+pm_cr <- pm[pm$Country == "Costa Rica", ] 
+
+table(pm_cr$Quality)
+
+pm_cr <- pm_cr[pm_cr$Quality %in% c("A", "B"), ]
+
+query_xc(X = pm_cr, path = "./data/raw/recordings/model_species_XC")
+
+
+# select columns to bind data frames together
+nms <- names(pm_cr)
+nms <- nms[grep(x = nms, "Other", invert = TRUE)]
+
+
+all_xc_dat <- rbind(pt_cr[, nms], rs_cr[, nms], pm_cr[, nms])
+
+
+table(all_xc_dat$Specific_epithet)
+
+
+write.csv(all_xc_dat, "./data/raw/recordings/model_species_XC.csv", row.names = FALSE)
+
+mp32wav(path = "./data/raw/recordings/model_species_XC")
+
+check_sound_files(path = "./data/raw/recordings/model_species_XC")
+
+
+```
+

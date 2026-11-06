@@ -1,0 +1,197 @@
+
+
+.border {
+  border: 4px solid #dee2e6;
+}
+
+.border-thick {
+  border-width: 6px;
+}
+
+/* Center slide titles */
+.reveal .slide h1,
+.reveal .slide h2,
+.reveal .slide h3,
+.reveal .slide h4,
+.reveal .slide h5,
+.reveal .slide h6 {
+    text-align: center;
+}
+
+/* Set color for all slide titles */
+.reveal .slide h1,
+.reveal .slide h2,
+.reveal .slide h3,
+.reveal .slide h4,
+.reveal .slide h5,
+.reveal .slide h6 {
+    color:  #366A9FFF;
+}
+
+/* Center images on slides */
+.reveal .slide img {
+    display: block;
+    margin-left: auto;
+    margin-right: auto;
+}
+
+.custom-color {
+    color: #38AAAC; /* Cambia el color según lo necesites */
+}
+
+.reveal img {
+  max-width: 150%;
+  overflow-x: hidden;
+}
+
+/* Message cards (Quarto callouts): soft tint, rounded, no side bar */
+.reveal div.callout.callout-note.callout-style-simple {
+    background: rgba(241, 246, 251, 0.94);
+    color: #1f2d3d;
+    border: 1px solid rgba(54, 106, 159, 0.14);
+    border-left: 1px solid rgba(54, 106, 159, 0.14);
+    border-radius: 18px;
+    box-shadow: 0 8px 24px rgba(30, 60, 100, 0.12);
+    padding: 0.55em 0.9em;
+    margin: 0.5em 0;
+}
+
+/* Quarto draws the side bar and an inner tint on these too */
+.reveal div.callout.callout-note.callout-style-simple > .callout-body,
+.reveal div.callout.callout-note.callout-style-simple .callout-body-container {
+    background: transparent;
+    border: none;
+}
+
+.reveal div.callout.callout-note.callout-style-simple p:last-child,
+.reveal div.callout.callout-note.callout-style-simple ul:last-child {
+    margin-bottom: 0;
+}
+
+/* Emphasis picks up the title colour */
+.reveal div.callout.callout-note.callout-style-simple strong,
+.reveal div.callout.callout-note.callout-style-simple b {
+    color: #366A9FFF;
+}
+
+/* Side-by-side cards share the same height and keep a gap between them */
+.reveal .columns:has(> .column > .callout:only-child) {
+    display: flex;
+    align-items: stretch;
+}
+
+.reveal .columns:has(> .column > .callout:only-child) > .column {
+    display: flex;
+    padding: 0 0.35em;
+    box-sizing: border-box;
+}
+
+.reveal .columns:has(> .column > .callout:only-child) > .column > .callout {
+    width: 100%;
+    box-sizing: border-box;
+}
+
+/* dynaSpec comparison (focal over model) next to the photo */
+.reveal .ds-fila {
+    display: flex;
+    gap: 14px;
+    align-items: center;
+}
+
+.reveal .ds-col {
+    flex: 1 1 0;
+    min-width: 0;
+}
+
+/* Drawing and name in a column to the left of each spectrogram */
+.reveal .dynaspec-compare {
+    margin-left: 125px;
+}
+
+.reveal .dynaspec-compare .dynaspec-player {
+    position: relative;
+}
+
+.reveal .ds-etiqueta {
+    position: absolute;
+    top: 0;
+    left: -125px;
+    width: 118px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 6px;
+    font-size: 20px;
+    line-height: 1.1;
+    text-align: center;
+    color: #000;
+}
+
+.reveal .slide img.ds-dibujo {
+    width: 112px;
+    max-height: 120px;
+    object-fit: contain;
+    margin: 0;
+}
+
+/* Species drawings next to their names */
+.reveal .slide img.ave {
+    display: inline-block;
+    height: 2.5em;
+    width: auto;
+    margin: 0 0.3em 0 0;
+    vertical-align: middle;
+}
+
+.reveal .slide img.ave-grande {
+    max-width: 62%;
+    max-height: 115px;
+    margin-top: 0.2em;
+}
+
+.reveal .slide img.ds-foto {
+    flex: 0 0 24%;
+    width: 24%;
+    min-width: 0;
+    margin: 0;
+    border-radius: 8px;
+    aspect-ratio: 0.613;
+    object-fit: cover;
+}
+
+/* Player controls at a readable size on the scaled slide */
+.reveal .dynaspec-player {
+    font-size: 18px;
+}
+
+.reveal .dynaspec-player .ds-bar {
+    margin-bottom: 0;
+}
+
+/* Source / citation line at the bottom of a slide */
+.fuente {
+    font-size: 22px;
+    font-style: italic;
+    text-align: center;
+    color: #555;
+}
+
+/* Large numbers on the key-result slide */
+.cifra {
+    font-size: 72px;
+    font-weight: bold;
+    color: #366A9FFF;
+    line-height: 1.1;
+    text-align: center;
+}
+
+.cifra-texto {
+    font-size: 26px;
+    text-align: center;
+}
+
+/* Long title on the opening and closing slides */
+.reveal .slide.titulo-largo h1 {
+    font-size: 1.45em;
+    line-height: 1.2;
+}

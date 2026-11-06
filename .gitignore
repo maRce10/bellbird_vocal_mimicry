@@ -1,0 +1,29 @@
+.Rproj.user
+.Rhistory
+.RData
+.Ruserdata
+.quarto/
+**/*.quarto_ipynb
+.vscode/
+__pycache__/
+Rplots.pdf
+
+# rendered website (built and deployed by .github/workflows/publish.yml)
+/_site/
+
+# rendered reports outside the website folder
+/scripts/*.html
+/scripts/*_files/
+/scripts/*.rmarkdown
+/scripts/rsconnect/
+
+# too large for GitHub, or not public yet (kept locally only)
+/data/
+/deprecated/
+/embedding_model/
+/scripts/embedding_model/
+/manuscript/
+/embs_plot.*
+/BirdNET_GLOBAL_6K_V2.4_Labels.txt
+
+/.quarto/

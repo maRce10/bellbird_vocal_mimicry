@@ -1,0 +1,26 @@
+---
+title: "Cuantificación del mimetismo vocal heteroespecífico mediante aprendizaje profundo: evidencia en un juvenil de pájaro campana"
+subtitle: "Código y presentación"
+author: "Pablo Huertas-Vásquez, Marcos Q. Oliva, Marcelo Araya-Salas"
+toc: false
+---
+
+Este sitio reúne los análisis y la presentación del estudio. Evaluamos si las vocalizaciones de un juvenil de pájaro campana (*Procnias tricarunculatus*) observado en Monteverde, Costa Rica, representan mimetismo genuino de especies simpátricas o semejanzas producidas por azar. Para ello reentrenamos BirdNET con tres especies simpátricas que pudo imitar, sus parientes alopátricos que no pudieron servirle de modelo y vocalizaciones de otros pájaros campana.
+
+Las vocalizaciones del individuo focal se clasificaron sobre todo como especies simpátricas, un sesgo que no apareció en otros pájaros campana. Los sonidos parecidos al tucán pico iris (*Ramphastos sulfuratus*) y al aracari de collar (*Pteroglossus torquatus*) fueron frecuentes en las primeras observaciones, y la clasificación como pájaro campana aumentó con el tiempo.
+
+## Contenido
+
+- **[Preparación de datos](scripts/birdnet_acoustic_data_prep.qmd)**: anotaciones, tablas de selección y exportación de los datos para BirdNET
+- **[Análisis estadístico](scripts/statistical_analysis.qmd)**: clasificadores, modelos bayesianos y cambios en el tiempo
+- **[Presentación](presentacion.qmd)**: diapositivas de la charla, con los espectrogramas y sus sonidos
+
+## Resultados principales
+
+::: {.figure-gallery}
+![Espectrogramas del individuo focal (izquierda) y de las especies modelo (centro), con una foto de cada evento (derecha).](output/mimicry_composite_figure.png)
+:::
+
+## Reproducibilidad
+
+El código está en el [repositorio de GitHub](https://github.com/maRce10/bellbird-mimicry). Los datos de audio y los modelos ajustados son demasiado grandes para alojarlos allí, por lo que los reportes se publican con sus resultados ya calculados.

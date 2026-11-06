@@ -1,0 +1,826 @@
+---
+title: BirdNET acoustic data prep
+subtitle: Bellbird mimicry
+author: <a href="https://marce10.github.io/">Marcelo Araya-Salas</a>
+date: "`r Sys.Date()`"
+toc: true
+toc-depth: 3
+toc-location: left
+number-sections: true
+highlight-style: pygments
+format:
+  html:
+    df-print: kable
+    code-fold: show
+    code-tools: true
+    css: qmd.css
+editor_options: 
+  chunk_output_type: console
+---
+
+```{r set root directory}
+#| eval: true
+#| echo: false
+
+# install knitr package if not installed
+if (!requireNamespace("knitr", quietly = TRUE)) {
+  install.packages("knitr")
+}
+
+# set working directory 
+knitr::opts_knit$set(root.dir =  "..")
+
+```
+
+```{r add link to github repo}
+#| eval: true
+#| output: asis
+#| echo: false
+
+# print link to github repo if any
+if (file.exists("./.git/config")){
+  config <- readLines("./.git/config")
+  url <- grep("url",  config, value = TRUE)
+  url <- gsub("\\turl = |.git$", "", url)
+  if (length(url) > 0)
+  if (nchar(url) > 1)
+  cat("\nSource code and data found at [", url, "](", url, ")", sep = "")
+  }
+
+```
+
+```{r setup style}
+#| message: false
+#| warning: false
+
+# options to customize chunk outputs
+knitr::opts_chunk$set(
+  tidy.opts = list(width.cutoff = 65), 
+  tidy = TRUE,
+  message = FALSE
+ )
+
+```
+
+<!-- skyblue box -->
+
+::: {.alert .alert-info}
+# Purpose {.unnumbered .unlisted}
+
+-   Export audio clip set for training birdNET
+:::
+
+ 
+
+<!-- light brown box -->
+
+::: {.alert .alert-warning}
+# Report overview {.unnumbered .unlisted}
+
+-   You can have the sections listed here, for instance:
+
+    -   [Lorem ipsum](#lorem-ipsum)
+    -   [Takeaways](#takeaways)
+:::
+
+ 
+
+
+# Load packages {.unnumbered .unlisted}
+
+```{r load packages}
+
+# knitr is require for creating html/pdf/word reports
+# formatR is used for soft-wrapping code
+
+# install knitr package if not installed
+if (!requireNamespace("sketchy", quietly = TRUE)) {
+  install.packages("sketchy")
+}
+
+packages <- c("knitr", "formatR", "Rraven", "warbleR", "tuneR", "caret")
+
+# install/ load packages
+sketchy::load_packages(packages = packages)
+
+```
+
+# Read annotations and create extended selection table
+
+'species.vocalization' column contains all the info about which species (and mimic individual) was singing and which sound or simpatric species was producing
+
+```{r check annotations}
+#| eval: false
+
+sf <- list.files("./data/processed/annotations", full.names = TRUE)
+
+dat <- sapply(sf, function(x) read.table(x, sep = "\t"))
+
+ncl <- sapply(dat, ncol)
+
+names(ncl[ncl > 14])
+
+sels1 <- imp_raven(
+  path = "./data/processed/annotations",
+  warbler.format = TRUE,
+  files = basename(names(ncl[ncl < 14])),
+  all.data = TRUE
+)
+
+sels2 <- imp_raven(
+  path = "./data/processed/annotations",
+  warbler.format = TRUE,
+  files = basename(names(ncl[ncl == 14])),
+  all.data = TRUE
+)
+
+sels2$Song <- ifelse(is.na(sels2$Song), sels2$Canto, sels2$Song)
+sels2$Song <- ifelse(is.na(sels2$Song), sels2$Soong, sels2$Song)
+
+sels2$Soong <- sels2$Canto <- NULL
+sels1$Song <- NA
+
+names(sels1)
+names(sels2)
+
+sels <- rbind(sels1, sels2)
+
+sels$sound.files <- gsub(
+  "Nueva-grabacio?",
+  "Nueva-grabació",
+  sels$sound.files,
+  fixed = TRUE
+)
+
+# cns_data <- consolidate(path = "./data/raw/recordings", parallel = 10)
+
+cs <- check_sels(X = sels, path = "./data/raw/recordings")
+
+# cs <- cs[cs$check.res %in% c("sound file not found", "OK"),]
+#
+# table(cs$check.res)
+#
+# unique(cs$sound.files[cs$check.res != "OK"])
+
+# remove 1 non-OK as it is a stranded dot selection
+sels <- sels[cs$check.res == "OK", ]
+
+# add model species
+sels$`Model species`[grep(
+  "Procnias",
+  sels$`Model species`
+)] <- "Procnias tricarunculatus"
+sels$`Model species`[grep(
+  "glossus",
+  sels$`Model species`
+)] <- "Pteroglossus torquatus"
+sels$`Model species`[grep(
+  "Ramphastos",
+  sels$`Model species`
+)] <- "Ramphastos sulfuratus"
+sels$`Model species`[grep(
+  "guatimozinus",
+  sels$sound.files
+)] <- "Psarocolius guatimozinus"
+sels$`Model species`[grep(
+  "montezuma",
+  sels$sound.files
+)] <- "Psarocolius montezuma"
+sels$`Model species`[grep(
+  "erythropygius",
+  sels$sound.files
+)] <- "Pteroglossus erythropygius"
+sels$`Model species`[grep(
+  "torquatus",
+  sels$sound.files
+)] <- "Pteroglossus torquatus"
+sels$`Model species`[grep("brevis", sels$sound.files)] <- "Ramphastos brevis"
+
+table(sels$`Model species`)
+
+sels$source <- sels$Recording
+sels$source[grep("cal$", sels$source)] <- "mimic_bellbird"
+
+sels$source[sels$source == ""] <- "mimic_bellbird"
+
+sels$source[grep("Procnias", sels$source)] <- "Procnias tricarunculatus"
+
+sels$source[grep("montezuma", sels$sound.files)] <- "Psarocolius montezuma"
+sels$source[grep("torquatus", sels$sound.files)] <- "Pteroglossus torquatus"
+sels$source[grep("sulfuratus", sels$sound.files)] <- "Ramphastos sulfuratus"
+sels$source[grep(
+  "guatimozinus",
+  sels$sound.files
+)] <- "Psarocolius guatimozinus"
+sels$source[grep("montezuma", sels$sound.files)] <- "Psarocolius montezuma"
+sels$source[grep(
+  "erythropygius",
+  sels$sound.files
+)] <- "Pteroglossus erythropygius"
+sels$source[grep("brevis", sels$sound.files)] <- "Ramphastos brevis"
+sels$source[grep(
+  "Ramphastos sulfuratus",
+  sels$source
+)] <- "Ramphastos sulfuratus"
+
+sels$`Model species`[
+  sels$sound.files == "Grab2-4.7.2020.wav"
+] <- "Procnias tricarunculatus"
+sels$source[sels$sound.files == "Grab2-4.7.2020.wav"] <- "mimic_bellbird"
+sels$Vocalization[sels$sound.files == "Grab2-4.7.2020.wav"] <- "babbling"
+sels$Vocalization[grep("1|2|3", sels$Vocalization)] <- ""
+
+sels$Vocalization[grep("gres", sels$Vocalization)] <- "aggresive"
+sels$Vocalization[grep("Talama", sels$Vocalization)] <- "Talamancan"
+sels$Vocalization[
+  sels$sound.files == "Procnias-tricarunculatus-476248.wav"
+] <- "Monteverde"
+
+sels$Vocalization[grep("Ptero", sels$Vocalization)] <- NA
+# sels$Song[sels$Vocalization %in% 1:3] <- sels$Vocalization[sels$Vocalization %in% 1:3]
+
+sels$Vocalization[grep("abblin", sels$Vocalization)] <- "babbling"
+sels$Vocalization[grep("Pteroglossus torquatus", sels$source)] <- NA
+
+sels$Vocalization[
+  sels$Vocalization == "" & !is.na(sels$Vocalization)
+] <- sels$`Model species`[sels$Vocalization == "" & !is.na(sels$Vocalization)]
+
+sels[sels$Vocalization == "" & !is.na(sels$Vocalization), ]
+
+table(sels$source)
+
+table(sels$Vocalization)
+table(sels$Vocalization, sels$source)
+table(sels$`Model species`, sels$source)
+
+# sels[grepl("mimic", sels$source) & sels$`Model species` == "", ]
+
+sels$Vocalization[
+  is.na(sels$Vocalization) &
+    sels$source == "mimic_bellbird" &
+    sels$`Model species` != ""
+] <- sels$`Model species`[
+  is.na(sels$Vocalization) &
+    sels$source == "mimic_bellbird" &
+    sels$`Model species` != ""
+]
+
+View(sels[
+  sels$selec.file %in%
+    sels$selec.file[
+      is.na(sels$Vocalization) & sels$source == "mimic_bellbird"
+    ],
+])
+
+
+sels$Vocalization[
+  sels$source == "mimic_bellbird" &
+    grepl("tricarunculatus", sels$`Model species`)
+] <- "Procnias tricarunculatus"
+
+sels$Vocalization[
+  sels$source == "mimic_bellbird" & grepl("montezuma", sels$`Model species`)
+] <- "Psarocolius montezuma"
+
+sels$Vocalization[
+  sels$source == "mimic_bellbird" & grepl("sulfuratus", sels$`Model species`)
+] <- "Ramphastos sulfuratus"
+
+sels$Vocalization[
+  sels$source == "mimic_bellbird" & grepl("torquatus", sels$`Model species`)
+] <- "Pteroglossus torquatus"
+
+sels$Vocalization[
+  sels$source == "mimic_bellbird" & grepl("torquatus", sels$`Model species`)
+] <- "Pteroglossus torquatus"
+
+sels$`Model species`[
+  sels$source == "mimic_bellbird" &
+    grepl("Campan_0106.Table.1.selections.txt", sels$selec.file) &
+    is.na(sels$Vocalization)
+] <- sels$Vocalization[
+  sels$source == "mimic_bellbird" &
+    grepl("Campan_0106.Table.1.selections.txt", sels$selec.file) &
+    is.na(sels$Vocalization)
+] <- "Ramphastos sulfuratus"
+
+sels$`Model species`[
+  sels$source == "mimic_bellbird" &
+    grepl("Campan_0108.Table.1.selections.txt", sels$selec.file) &
+    is.na(sels$Vocalization)
+] <- sels$Vocalization[
+  sels$source == "mimic_bellbird" &
+    grepl("Campan_0108.Table.1.selections.txt", sels$selec.file) &
+    is.na(sels$Vocalization)
+] <- "Procnias tricarunculatus"
+
+sels$`Model species`[
+  sels$source == "mimic_bellbird" &
+    grepl("Campan_0116.Table.1.selections.txt", sels$selec.file) &
+    is.na(sels$Vocalization)
+] <- sels$Vocalization[
+  sels$source == "mimic_bellbird" &
+    grepl("Campan_0116.Table.1.selections.txt", sels$selec.file) &
+    is.na(sels$Vocalization)
+] <- "Pteroglossus torquatus"
+
+
+table(sels$Vocalization[sels$source == "mimic_bellbird"])
+
+
+table(sels$Vocalization[
+  sels$source %in% c("mimic_bellbird", "Procnias tricarunculatus")
+])
+
+sels$species.vocalization <- paste(sels$source, sels$Vocalization, sep = "-")
+
+sels$species.vocalization <- ifelse(
+  sels$`Model species` %in%
+    c(
+      "Psarocolius guatimozinus",
+      "Pteroglossus erythropygius",
+      "Ramphastos brevis"
+    ),
+  gsub("-NA", "-non-model", sels$species.vocalization),
+  gsub("-NA", "-model", sels$species.vocalization)
+)
+
+
+sels$species.vocalization <- gsub(
+  "mimic_bellbird",
+  "mimic_P.tricarunculatus",
+  sels$species.vocalization
+)
+
+sels$species.vocalization <- gsub(
+  "Pteroglossus ",
+  "P.",
+  sels$species.vocalization
+)
+
+sels$species.vocalization <- gsub(
+  "Procnias tricarunculatus",
+  "P.tricarunculatus",
+  sels$species.vocalization
+)
+
+sels$species.vocalization <- gsub(
+  "Ramphastos ",
+  "R.",
+  sels$species.vocalization
+)
+
+sels$species.vocalization <- gsub(
+  "Psarocolius ",
+  "P.",
+  sels$species.vocalization
+)
+
+
+sels$species.vocalization <- gsub(
+  "mimic_P.tricarunculatus-P.tricarunculatus",
+  "mimic_P.tricarunculatus-adult",
+  sels$species.vocalization
+)
+
+sels$species.vocalization <- gsub(
+  "Whistle",
+  "whistle",
+  sels$species.vocalization
+)
+
+sels$species.vocalization <- gsub(
+  "Nicaraguan",
+  "Nicaragua",
+  sels$species.vocalization
+)
+
+sels$species.vocalization <- gsub(
+  "Talamancan",
+  "Talamanca",
+  sels$species.vocalization
+)
+
+# table(sels$species.vocalization)
+
+sels$sound.files <- gsub(".mp3$", ".wav", sels$sound.files)
+
+write.csv(sels, "./data/processed/pooled_annotations.csv", row.names = FALSE)
+
+
+# save as extended selection table
+est <- selection_table(
+  sels,
+  extended = TRUE,
+  mar = 0.05,
+  parallel = 10,
+  path = "./data/raw/recordings"
+)
+
+table(attr(est, "check.res")$sample.rate)
+
+
+sels$Vocalization[
+  sels$source == "mimic_bellbird" &
+    grepl("tricarunculatus", sels$`Model species`)
+] <- "Procnias tricarunculatus"
+
+sels$Vocalization[
+  sels$source == "mimic_bellbird" & grepl("montezuma", sels$`Model species`)
+] <- "Psarocolius montezuma"
+
+sels$Vocalization[
+  sels$source == "mimic_bellbird" & grepl("sulfuratus", sels$`Model species`)
+] <- "Ramphastos sulfuratus"
+
+sels$Vocalization[
+  sels$source == "mimic_bellbird" & grepl("torquatus", sels$`Model species`)
+] <- "Pteroglossus torquatus"
+
+sels$Vocalization[
+  sels$source == "mimic_bellbird" & grepl("torquatus", sels$`Model species`)
+] <- "Pteroglossus torquatus"
+
+sels$`Model species`[
+  sels$source == "mimic_bellbird" &
+    grepl("Campan_0106.Table.1.selections.txt", sels$selec.file) &
+    is.na(sels$Vocalization)
+] <- sels$Vocalization[
+  sels$source == "mimic_bellbird" &
+    grepl("Campan_0106.Table.1.selections.txt", sels$selec.file) &
+    is.na(sels$Vocalization)
+] <- "Ramphastos sulfuratus"
+
+sels$`Model species`[
+  sels$source == "mimic_bellbird" &
+    grepl("Campan_0108.Table.1.selections.txt", sels$selec.file) &
+    is.na(sels$Vocalization)
+] <- sels$Vocalization[
+  sels$source == "mimic_bellbird" &
+    grepl("Campan_0108.Table.1.selections.txt", sels$selec.file) &
+    is.na(sels$Vocalization)
+] <- "Procnias tricarunculatus"
+
+sels$`Model species`[
+  sels$source == "mimic_bellbird" &
+    grepl("Campan_0116.Table.1.selections.txt", sels$selec.file) &
+    is.na(sels$Vocalization)
+] <- sels$Vocalization[
+  sels$source == "mimic_bellbird" &
+    grepl("Campan_0116.Table.1.selections.txt", sels$selec.file) &
+    is.na(sels$Vocalization)
+] <- "Pteroglossus torquatus"
+
+
+table(sels$Vocalization[sels$source == "mimic_bellbird"])
+
+
+table(sels$Vocalization[
+  sels$source %in% c("mimic_bellbird", "Procnias tricarunculatus")
+])
+
+sels$species.vocalization <- paste(sels$source, sels$Vocalization, sep = "-")
+
+sels$species.vocalization <- ifelse(
+  sels$`Model species` %in%
+    c(
+      "Psarocolius guatimozinus",
+      "Pteroglossus erythropygius",
+      "Ramphastos brevis"
+    ),
+  gsub("-NA", "-non-model", sels$species.vocalization),
+  gsub("-NA", "-model", sels$species.vocalization)
+)
+
+
+sels$species.vocalization <- gsub(
+  "mimic_bellbird",
+  "mimic_P.tricarunculatus",
+  sels$species.vocalization
+)
+
+sels$species.vocalization <- gsub(
+  "Pteroglossus ",
+  "P.",
+  sels$species.vocalization
+)
+
+sels$species.vocalization <- gsub(
+  "Procnias tricarunculatus",
+  "P.tricarunculatus",
+  sels$species.vocalization
+)
+
+sels$species.vocalization <- gsub(
+  "Ramphastos ",
+  "R.",
+  sels$species.vocalization
+)
+
+sels$species.vocalization <- gsub(
+  "Psarocolius ",
+  "P.",
+  sels$species.vocalization
+)
+
+
+sels$species.vocalization <- gsub(
+  "mimic_P.tricarunculatus-P.tricarunculatus",
+  "mimic_P.tricarunculatus-adult",
+  sels$species.vocalization
+)
+
+sels$species.vocalization <- gsub(
+  "Whistle",
+  "whistle",
+  sels$species.vocalization
+)
+
+sels$species.vocalization <- gsub(
+  "Nicaraguan",
+  "Nicaragua",
+  sels$species.vocalization
+)
+
+sels$species.vocalization <- gsub(
+  "Talamancan",
+  "Talamanca",
+  sels$species.vocalization
+)
+
+# table(sels$species.vocalization)
+
+sels$sound.files <- gsub(".mp3$", ".wav", sels$sound.files)
+
+write.csv(sels, "./data/processed/pooled_annotations.csv", row.names = FALSE)
+
+
+# save as extended selection table
+est <- selection_table(
+  sels,
+  extended = TRUE,
+  mar = 0.05,
+  parallel = 10,
+  path = "./data/raw/recordings"
+)
+
+table(attr(est, "check.res")$sample.rate)
+
+saveRDS(
+  est,
+  "./data/processed/extended_selection_table_sympatric_and_allopatric_species.RDS"
+)
+```
+
+# Export data for birdNET 
+
+## Sympatric and allopatric species
+```{r}
+#| eval: false
+
+est <- readRDS("./data/processed/extended_selection_table_sympatric_and_allopatric_species.RDS")
+
+est <- resample_est(est, samp.rate = 48)
+
+no_mimic <- est[
+  est$source != "mimic_bellbird" &
+    est$species.vocalization != "P.tricarunculatus-babbling",
+]
+
+table(no_mimic$species.vocalization)
+
+no_mimic$orig.sound.files <- attr(no_mimic, "check.res")$orig.sound.files
+
+
+# sample size
+table(no_mimic$source)
+
+# sample size per sound file
+aggregate(orig.sound.files ~ source, data = no_mimic, function(x) {
+  length(unique(x))
+})
+
+
+# use caret to create a 80-20 split of the data for training and testing the model, stratified by source + sound file (species), keeping entire orig.sound.files levels for testing
+
+unique_orig_sound_files <- as.data.frame(no_mimic[
+  !duplicated(no_mimic$orig.sound.files),
+  c("orig.sound.files", "source")
+])
+
+set.seed(123)
+
+# exclude pteroglossus to add it manually
+trainIndex <- createDataPartition(
+  unique_orig_sound_files$source,
+  p = .8,
+  list = FALSE,
+  times = 1
+)
+
+
+# training data
+no_mimic_train <- no_mimic[
+  no_mimic$orig.sound.files %in%
+    unique_orig_sound_files$orig.sound.files[trainIndex],
+]
+
+table(no_mimic_train$source)
+
+dir.create("./data/processed/birdnet_data/train_data")
+
+# Training and testing
+spp <- unique(no_mimic$source)
+
+for (i in spp) {
+  dir.create(paste0("./data/processed/birdnet_data/train_data/", i))
+  Y <- no_mimic_train[no_mimic_train$source == i, ]
+  Y$start <- 0
+  Y$end <- 1000
+  exp_est(
+    Y,
+    path = paste0("./data/processed/birdnet_data/train_data/", i),
+    selection.table = FALSE
+  )
+}
+
+# test data
+no_mimic_test <- no_mimic[
+    !no_mimic$orig.sound.files %in%
+        unique_orig_sound_files$orig.sound.files[trainIndex],
+]
+
+table(no_mimic_test$source)
+
+dir.create("./data/processed/birdnet_data/test_data")
+
+for (i in spp) {
+  dir.create(paste0("./data/processed/birdnet_data/test_data/", i))
+  Y <- no_mimic_test[no_mimic_test$source == i, ]
+  Y$start <- 0
+  Y$end <- 1000
+  exp_est(
+    Y,
+    path = paste0("./data/processed/birdnet_data/test_data/", i),
+    selection.table = FALSE
+  )
+}
+
+# export all at 2s long for getting embeddings 
+dir.create("./data/processed/birdnet_data/models_and_non_models_2s")
+
+# Repeat each one till is 2 s long
+for ( i in 1:nrow(no_mimic)) {
+    
+    # read only bell bird clip
+    wv <- read_sound_file(no_mimic, i)
+    background <- read_sound_file(no_mimic, i, from = 0.001, to = no_mimic$start[i])
+    wv_long <- pastew(background, wv, output = "Wave")    
+    
+    while(duration(wv_long) < 2){
+    wv_long <- pastew(wv_long, background, output = "Wave")    
+    wv_long <- pastew(background, wv_long, output = "Wave")    
+    }
+    
+    wv_long <-cutw(wv_long, from = 0, to = 2, output = "Wave")
+    
+    writeWave(wv_long, filename = paste0("./data/processed/birdnet_data/models_and_non_models_2s/", no_mimic$sound.files[i], ".wav"), extensible = FALSE)
+    
+}
+
+```
+
+## Only other bellbirds
+```{r}
+#| eval: false
+
+other_bellbirds <- no_mimic[no_mimic$source == "Procnias tricarunculatus", ]
+
+
+# export all at 2s long for getting embeddings 
+dir.create("./data/processed/birdnet_data/other_bellbirds")
+
+# Repeat each one till is 2 s long
+for ( i in 1:nrow(other_bellbirds)) {
+    
+    # read only bell bird clip
+    wv <- read_sound_file(other_bellbirds, i)
+    background <- read_sound_file(other_bellbirds, i, from = 0.001, to = other_bellbirds$start[i])
+    wv_long <- pastew(background, wv, output = "Wave")    
+    
+    while(duration(wv_long) < 2){
+    wv_long <- pastew(wv_long, background, output = "Wave")    
+    wv_long <- pastew(background, wv_long, output = "Wave")    
+    }
+    
+    wv_long <-cutw(wv_long, from = 0, to = 2, output = "Wave")
+    
+    writeWave(wv_long, filename = paste0("./data/processed/birdnet_data/other_bellbirds/", other_bellbirds$sound.files[i], ".wav"), extensible = FALSE)
+    
+}
+
+
+```
+
+## Mimic bellbird
+
+## Excluding babbling 
+```{r}
+#| eval: false
+
+# export mimic bird clips
+mimic <- est[
+    est$source == "mimic_bellbird" &
+        est$species.vocalization != "P.tricarunculatus-babbling",
+]
+
+table(mimic$species.vocalization)
+
+# Export them in 2s segments adding noise at the begining and end
+dir.create("./data/processed/birdnet_data/mimic_bellbird_no_babbling")
+
+# Repeat each one till is 2 s long
+for ( i in 1:nrow(mimic)) {
+    
+    # read only bell bird clip
+    wv <- read_sound_file(mimic, i)
+    background <- read_sound_file(mimic, i, from = 0.001, to = mimic$start[i])
+    wv_long <- pastew(background, wv, output = "Wave")    
+    
+    while(duration(wv_long) < 2){
+    wv_long <- pastew(wv_long, background, output = "Wave")    
+    wv_long <- pastew(background, wv_long, output = "Wave")    
+    }
+    
+    wv_long <-cutw(wv_long, from = 0, to = 2, output = "Wave")
+    
+    writeWave(wv_long, filename = paste0("./data/processed/birdnet_data/mimic_bellbird_no_babbling/", mimic$sound.files[i], ".wav"), extensible = FALSE)
+    
+}
+
+
+```
+
+## Including babbling 
+```{r}
+#| eval: false
+
+# export mimic bird clips
+mimic_bab <- est[
+    est$source == "mimic_bellbird",
+]
+
+table(mimic_bab$species.vocalization)
+
+# Export them in 2s segments adding noise at the begining and end
+dir.create("./data/processed/birdnet_data/mimic_bellbird")
+
+# Repeat each one till is 2 s long
+for ( i in 1:nrow(mimic_bab)) {
+    
+    # read only bell bird clip
+    wv <- read_sound_file(mimic_bab, i)
+    background <- read_sound_file(mimic_bab, i, from = 0.001, to = mimic_bab$start[i])
+    wv_long <- pastew(background, wv, output = "Wave")    
+    
+    while(duration(wv_long) < 2){
+    wv_long <- pastew(wv_long, background, output = "Wave")    
+    wv_long <- pastew(background, wv_long, output = "Wave")    
+    }
+    
+    wv_long <-cutw(wv_long, from = 0, to = 2, output = "Wave")
+    
+    writeWave(wv_long, filename = paste0("./data/processed/birdnet_data/mimic_bellbird/", mimic_bab$sound.files[i], ".wav"), extensible = FALSE)
+    
+}
+
+
+```
+
+
+ 
+
+<!-- '---' adds a gray vertical line -->
+
+------------------------------------------------------------------------
+
+ 
+
+<!-- add packages used, system details and versions  -->
+
+::: {.callout-note collapse="true"}
+## Session information {.unnumbered .unlisted}
+
+```{r session info}
+#| echo: false
+
+# if devtools is installed use devtools::session_info()
+if (requireNamespace("devtools", quietly = TRUE)) {
+  devtools::session_info()
+} else {
+  sessionInfo()
+}
+
+```
+:::

@@ -1,0 +1,51 @@
+/* white navbar with a thin divider */
+.navbar {
+    background-color: #ffffff !important;
+    border-bottom: 1px solid #e5e5e5;
+}
+
+.navbar .navbar-title,
+.navbar .nav-link {
+    color: #408AB4 !important;
+}
+
+.navbar .nav-link.active,
+.navbar .nav-link:hover {
+    color: #2c6280 !important;
+}
+
+/* download button added below each figure (see _figure-download.html) */
+.figure-download {
+    text-align: center;
+    margin: 0.25rem 0 1.5rem 0;
+}
+
+.figure-download .btn {
+    color: #408AB4;
+    border-color: #408AB4;
+}
+
+.figure-download .btn:hover {
+    color: #ffffff;
+    background-color: #408AB4;
+}
+
+.figure-gallery img {
+    border: 1px solid #eeeeee;
+}
+
+/* slides embedded in the "Presentación" tab, at their 3:2 shape */
+.presentacion-ayuda {
+    text-align: center;
+    margin-bottom: 0.75rem;
+}
+
+iframe.presentacion {
+    display: block;
+    width: 100%;
+    max-width: calc((100vh - 240px) * 1.5);
+    aspect-ratio: 3 / 2;
+    margin: 0 auto;
+    border: 1px solid #e5e5e5;
+    border-radius: 6px;
+}

@@ -1,0 +1,2082 @@
+---
+title: Statistical analysis
+subtitle: Bellbird mimicry
+author: <a href="https://marce10.github.io/">Marcelo Araya-Salas</a>
+date: "`r Sys.Date()`"
+toc: true
+toc-depth: 3
+toc-location: left
+number-sections: true
+highlight-style: pygments
+format:
+  html:
+    df-print: kable
+    code-fold: true
+    code-tools: true
+    css: qmd.css
+editor_options: 
+  chunk_output_type: console
+---
+
+```{r set root directory}
+#| eval: true
+#| echo: false
+#| warning: false
+ 
+# install knitr package if not installed
+if (!requireNamespace("knitr", quietly = TRUE)) {
+  install.packages("knitr")
+}
+
+# set working directory 
+knitr::opts_knit$set(root.dir =  "..")
+
+```
+
+```{r add link to github repo}
+#| eval: true
+#| output: asis
+#| echo: false
+
+# print link to github repo if any
+if (file.exists("./.git/config")){
+  config <- readLines("./.git/config")
+  url <- grep("url",  config, value = TRUE)
+  url <- gsub("\\turl = |.git$", "", url)
+  if (length(url) > 0)
+  if (nchar(url) > 1)
+  cat("\nSource code and data found at [", url, "](", url, ")", sep = "")
+  }
+
+```
+
+```{r setup style}
+#| message: false
+#| warning: false
+
+# options to customize chunk outputs
+knitr::opts_chunk$set(
+  message = FALSE
+ )
+
+```
+
+<!-- skyblue box -->
+
+::: {.alert .alert-info}
+# Purpose {.unnumbered .unlisted}
+
+-   Evaluate similarity of vocalizations of a mimic bellbird and its model species using birdNET embeddings
+    - Are focal belbird vocalizations more similar to sympatric than to allopatric species?
+    - Are mimic vocalizations (resembling sympatric species) more common in the focal bellbird than in other bellbirds?
+:::
+
+# Analysis flowchart {.unnumbered .unlisted}
+
+```{mermaid}
+
+flowchart LR
+  A[Read birdNET output] --> B(Format data) 
+  B --> C(Graphs)
+  C --> D(Statistical analysis)
+  D --> E(Model summary) 
+
+style A fill:#382A5433
+style B fill:#395D9C33
+style C fill:#3497A933
+style D fill:#60CEAC33
+
+```
+
+# Load packages and custom functions {.unnumbered .unlisted}
+
+```{r load packages}
+#| warning: false
+
+# knitr is require for creating html/pdf/word reports
+# formatR is used for soft-wrapping code
+
+# install knitr package if not installed
+if (!requireNamespace("sketchy", quietly = TRUE)) {
+  install.packages("sketchy")
+}
+
+
+packages <- c(
+  "knitr",
+  "Rtsne",
+  "caret",
+  "ggplot2",
+  "viridis",
+  "doParallel",
+  "brms",
+  "brmsish",
+  "cowplot",
+  "Rraven",
+  "kableExtra"
+)
+
+# install/ load packages
+sketchy::load_packages(packages = packages)
+
+
+options(knitr.kable.NA = '')
+
+print <- function(x, row.names = FALSE) {
+    kb <- kable(x, row.names = row.names, digits = 4, "html")
+    kb <- kable_styling(kb,
+                        bootstrap_options = c("striped", "hover", "condensed", "responsive"))
+    scroll_box(kb, width = "100%")
+}
+
+common_names <- c(
+  "Procnias tricarunculatus" = "Three-wattled Bellbird",
+  "Psarocolius guatimozinus" = "Chestnut-headed Oropendola",
+  "Psarocolius montezuma" = "Montezuma Oropendola",
+  "Pteroglossus erythropygius" = "Pale-mandibled Aracari",
+  "Pteroglossus torquatus" = "Collared Aracari",
+  "Ramphastos brevis" = "Choco Toucan",
+  "Ramphastos sulfuratus" = "Keel-billed Toucan",
+  "nocall" = "Unassigned"
+)
+
+# to create several posterior predictive check plots out of a brms fit
+custom_ppc <- function(fit, group = NULL, ndraws = 30) {
+  by_group  <- if (!is.null(group)) {
+    TRUE
+  } else
+    FALSE
+  
+  if (by_group)
+    by_group  <-  if (any(names(fit$data) == group)) {
+      TRUE
+    } else
+      FALSE
+  
+  if (by_group)
+    by_group <-
+      if (is.character(fit$data[, group]) |
+          is.factor(fit$data[, group])) {
+        TRUE
+      } else
+        FALSE
+  
+  
+  if (by_group) {
+    ppc_dens <- pp_check(fit,
+                         ndraws = ndraws,
+                         type = 'dens_overlay_grouped',
+                         group = group)
+    
+    pp_mean <- pp_check(
+      fit,
+      type = "stat_grouped",
+      stat = "mean",
+      group = group,
+      ndraws = ndraws
+    )  + theme_classic()
+    
+  } else {
+    ppc_dens <- pp_check(fit, ndraws = ndraws, type = 'dens_overlay')
+    
+    pp_mean <- pp_check(fit,
+                        type = "stat",
+                        stat = "mean",
+                        ndraws = ndraws) + theme_classic()
+    
+  }
+  
+  pp_plot_list <-
+    list(ppc_dens, pp_mean)
+  
+  pp_plot_list <-
+    lapply(pp_plot_list, function(x)
+      x   + scale_fill_viridis_d(
+        begin = 0.3,
+        end = 0.8,
+        alpha = 0.5,
+        option = "mako"
+      ) + theme_classic())
+  
+  
+  ppc_plot <- plot_grid(plotlist = pp_plot_list, ncol = 2)
+ 
+   ppc_plot
+}
+
+```
+
+# Sympatric and allopatric species
+
+## BirdNET model
+```{r}
+
+mod_eval_symp_allo <- read.csv("./data/processed/birdnet_models/sympatric_and_allopatric/sympatric_and_allopatric_evaluation.csv")
+
+names(mod_eval_symp_allo) <- gsub("..", " ", names(mod_eval_symp_allo), fixed = TRUE)
+
+print(mod_eval_symp_allo)
+
+```
+
+Keeping low confidence classifications (confidence < optimal threshold) 
+
+```{r}
+
+# read data
+sympatric_allopatric_class <- imp_raven(
+  path = "./data/processed/birdnet_classification_outputs/sympatrics_and_allopactrics/sympatrics_and_allopatrics_model/",
+  all.data = TRUE,
+  warbler.format = TRUE,
+  pb = FALSE
+)
+
+# keep only test data
+test_files <- list.files("/home/m/Dropbox/Projects/bellbird_mimicry/data/processed/birdnet_data/test_data/", full.names = FALSE, recursive = TRUE)
+
+test_files <- basename(gsub("\\\\", "/", test_files))
+
+
+sympatric_allopatric_class$sound.files <- basename(gsub("\\\\", "/", sympatric_allopatric_class$sound.files))
+
+# all(test_files %in% sympatric_allopatric_class$sound.files)
+# 
+# setdiff(test_files, sympatric_allopatric_class$sound.files)
+ 
+ 
+sympatric_allopatric_test <- sympatric_allopatric_class[sympatric_allopatric_class$sound.files %in% test_files, ] 
+
+# filter low confidence classifications
+sympatric_allopatric_test$true.positive <- sapply(seq_len(nrow(sympatric_allopatric_test)), function(x){
+    sympatric_allopatric_test$Confidence[x] >= mod_eval_symp_allo$Optimal.Threshold[mod_eval_symp_allo$Class == sympatric_allopatric_test$`Common Name`[x]]
+    })
+
+sympatric_allopatric_test$`Common Name`[!sympatric_allopatric_test$true.positive] <- "nocall"
+
+
+# rename column
+sympatric_allopatric_test$predicted_sp <- sympatric_allopatric_test$`Common Name`
+
+sympatric_allopatric_test$`Common Name` <- NULL
+
+# read metadata
+est <- readRDS(
+  "./data/processed/extended_selection_table_sympatric_and_allopatric_species.RDS"
+)
+
+# add metadata
+sympatric_allopatric_test$sound.files <- basename(gsub("\\\\", "/", sympatric_allopatric_test$sound.files))
+
+
+
+sympatric_allopatric_test$vocalizing_sp <- sapply(sympatric_allopatric_test$sound.files, function(x) {
+  est$source[paste0(est$sound.files, ".wav") == x][1]
+})
+
+
+# save confusion matrix
+conf_mat <- confusionMatrix(
+  data = as.factor(sympatric_allopatric_test$predicted_sp),
+  reference = factor(sympatric_allopatric_test$vocalizing_sp, levels = levels(as.factor(sympatric_allopatric_test$predicted_sp))
+)
+)
+
+conf_df_fp <- as.data.frame(conf_mat$table)
+
+conf_df_fp$total <- sapply(conf_df_fp$Reference, function(x) {
+  sum(sympatric_allopatric_test$vocalizing_sp == x)
+})
+
+conf_df_fp$Proportion <- conf_df_fp$Freq / conf_df_fp$total
+
+conf_df_fp$pred_common_name <- common_names[as.character(conf_df_fp$Prediction)]
+conf_df_fp$ref_common_name <- common_names[as.character(conf_df_fp$Reference)]
+
+# sort levels by genus
+conf_df_fp$pred_common_name <- factor(
+  conf_df_fp$pred_common_name,
+  levels = c(
+    "Three-wattled Bellbird",
+    "Chestnut-headed Oropendola",
+    "Montezuma Oropendola",
+    "Collared Aracari",
+    "Pale-mandibled Aracari",
+    "Keel-billed Toucan",
+    "Choco Toucan",
+    "Unassigned"
+  )
+)
+
+conf_df_fp$ref_common_name <- factor(
+  conf_df_fp$ref_common_name,
+  levels = c(
+    "Three-wattled Bellbird",
+    "Chestnut-headed Oropendola",
+    "Montezuma Oropendola",
+    "Collared Aracari",
+    "Pale-mandibled Aracari",
+    "Keel-billed Toucan",
+    "Choco Toucan",
+    "Unassigned"
+  )
+)
+
+ggplot(conf_df_fp[conf_df_fp$ref_common_name != "Unassigned", ],
+       aes(x = ref_common_name, y = pred_common_name, fill = Proportion)) +
+    geom_tile() +
+    theme_bw() +
+    coord_equal() +
+    scale_fill_gradient2(low = mako(10)[3], high = mako(10)[7]) +
+    labs(x = "Reference species", y = "Predicted species") +
+    geom_text(aes(label = round(Proportion, 2)), color = "black") +
+    theme_classic() +
+    theme(axis.text.x = element_text(
+        color = "black",
+        size = 11,
+        angle = 30,
+        hjust = 1
+    ))
+
+
+```
+
+Excluding low confidence classifications (confidence >= optimal threshold)
+
+```{r}
+sympatric_allopatric_test_tp <- sympatric_allopatric_test[sympatric_allopatric_test$true.positive, ]
+
+# save confusion matrix
+conf_mat <- confusionMatrix(
+  data = as.factor(sympatric_allopatric_test_tp$predicted_sp),
+  reference = factor(sympatric_allopatric_test_tp$vocalizing_sp, levels = levels(as.factor(sympatric_allopatric_test_tp$predicted_sp))
+)
+)
+
+conf_df <- as.data.frame(conf_mat$table)
+
+conf_df$total <- sapply(conf_df$Reference, function(x) {
+  sum(sympatric_allopatric_test_tp$vocalizing_sp == x)
+})
+
+conf_df$Proportion <- conf_df$Freq / conf_df$total
+
+conf_df$pred_common_name <- common_names[as.character(conf_df$Prediction)]
+conf_df$ref_common_name <- common_names[as.character(conf_df$Reference)]
+
+# sort levels by genus
+conf_df$pred_common_name <- factor(
+  conf_df$pred_common_name,
+  levels = c(
+    "Three-wattled Bellbird",
+    "Chestnut-headed Oropendola",
+    "Montezuma Oropendola",
+    "Collared Aracari",
+    "Pale-mandibled Aracari",
+    "Keel-billed Toucan",
+    "Choco Toucan",
+    "Unassigned"
+  )
+)
+
+conf_df$ref_common_name <- factor(
+  conf_df$ref_common_name,
+  levels = c(
+    "Three-wattled Bellbird",
+    "Chestnut-headed Oropendola",
+    "Montezuma Oropendola",
+    "Collared Aracari",
+    "Pale-mandibled Aracari",
+    "Keel-billed Toucan",
+    "Choco Toucan",
+    "Unassigned"
+  )
+)
+
+ggplot(conf_df, aes(x = ref_common_name, y = pred_common_name, fill = Proportion)) +
+  geom_tile() +
+  theme_bw() +
+  coord_equal() +
+  scale_fill_gradient2(low = mako(10)[3], high = mako(10)[7]) +
+  labs(x = "Reference species", y = "Predicted species") +
+  geom_text(aes(label = round(Proportion, 2)), color = "black") +
+  theme_classic() +
+  theme(
+    axis.text.x = element_text(
+      color = "black",
+      size = 11,
+      angle = 30,
+      hjust = 1
+    )
+  )
+
+```
+
+### Embeddings
+
+```{r}
+#| eval: false
+
+embs <- read.csv("./data/processed/embeddings/embeddings_sympatric_allopatric_spp.csv")
+
+# Split into separate columns
+emb_matrix <- do.call(rbind, strsplit(embs$embedding, ","))
+colnames(emb_matrix) <- paste0("emb", 1:ncol(emb_matrix))
+emb_matrix <- apply(emb_matrix, 2, as.numeric)
+
+# Combine with the first 3 columns
+embs <- as.data.frame(cbind(embs[, 1:3], emb_matrix))
+
+# add metadata
+embs$file_path <- gsub("Nueva-grabaci\xf3n", "Nueva-grabación", embs$file_path, useBytes = TRUE)
+embs$sound.files <- basename(gsub("\\\\", "/", embs$file_path, useBytes = TRUE))
+
+embs$vocalizing_sp <- sapply(embs$sound.files, function(x) {
+  est$source[paste0(est$sound.files, ".wav") == x][1]
+})
+
+set.seed(123)
+tsne_out <- Rtsne(as.matrix(embs[, grep("emb", names(embs))]))
+
+tsne_all <- data.frame(vocalizing_sp = embs$vocalizing_sp, tsne1 = tsne_out$Y[,1], tsne2 = tsne_out$Y[,2])
+
+saveRDS(tsne_all, "./data/processed/tsne_dims_sympatric_and_allopatric_species.rds")
+
+
+```
+
+```{r}
+
+# colors and shapes by species for scatterplots
+cols <- c(adjustcolor("tomato", alpha.f = 0.4), mako(4, alpha = 0.4, begin = 0.2, end = 0.8))
+cols2 <- c(adjustcolor("tomato", alpha.f = 0.9), mako(4, alpha = 0.9, begin = 0.2, end = 0.8))
+
+cols <- c(cols[1:2], rep(cols[3:5], each = 2))
+cols2 <- c(cols2[1:2], rep(cols2[3:5], each = 2))
+
+shapes <- c(16, 16, 16, 1, 17, 2, 15, 0)
+
+names(shapes) <- names(cols) <- names(cols2) <- c(
+  "mimic_bellbird",
+  "Three-wattled Bellbird",
+  "Montezuma Oropendola",
+  "Chestnut-headed Oropendola",
+  "Collared Aracari",
+  "Pale-mandibled Aracari",
+  "Keel-billed Toucan",
+  "Choco Toucan"
+)
+
+tsne_all <- readRDS("./data/processed/tsne_dims_sympatric_and_allopatric_species.rds")
+
+tsne_only_model_species <- tsne_all[tsne_all$vocalizing_sp != "mimic_bellbird", ]
+
+tsne_only_model_species$common_name <- common_names[as.character(tsne_only_model_species$vocalizing_sp)] 
+
+tsne_only_model_species$common_name <- factor(
+  tsne_only_model_species$common_name,
+  levels = c(
+    "Three-wattled Bellbird",
+    "Chestnut-headed Oropendola",
+    "Montezuma Oropendola",
+    "Collared Aracari",
+    "Pale-mandibled Aracari",
+    "Keel-billed Toucan",
+    "Choco Toucan"
+  )
+)
+
+ggplot(tsne_only_model_species, aes(x = tsne1, y = tsne2, color = common_name, shape = common_name)) +
+  geom_point(size = 2) +
+  theme_minimal() +
+  labs(x = "t-SNE 1", y = "t-SNE 2", color = "", shape = "") +
+    scale_color_manual(values = cols[names(cols) %in% unique(tsne_only_model_species$common_name)]) +
+    scale_shape_manual(values = shapes[names(shapes) %in% unique(tsne_only_model_species$common_name)]) +
+    theme_classic()
+
+```
+
+### Focal bellbird classification
+
+```{r}
+
+# read data
+mimic_class <- imp_raven(
+  path = "./data/processed/birdnet_classification_outputs/mimic_bellbird/sympatrics_and_allopatrics_model/",
+  all.data = TRUE,
+  warbler.format = TRUE,
+  pb = FALSE
+)
+
+# filter low confidence classifications
+mimic_class$true.positive <- sapply(seq_len(nrow(mimic_class)), function(x){
+    mimic_class$Confidence[x] >= mod_eval_symp_allo$Optimal.Threshold[mod_eval_symp_allo$Class == mimic_class$`Common Name`[x]]
+    })
+
+mimic_class$`Common Name`[!mimic_class$true.positive] <- "nocall"
+
+
+
+# add metadata
+mimic_class$sound.files <- basename(gsub(
+  "\\\\",
+  "/",
+  mimic_class$sound.files
+))
+
+# rename column
+mimic_class$predicted_sp <- mimic_class$`Common Name`
+mimic_class$vocalizing_sp <- "Procnias tricarunculatus"
+
+mimic_class$`Common Name` <- NULL
+
+prop_mimic_class <- table(mimic_class$predicted_sp)
+
+prop_mimic_class <- data.frame(prop_mimic_class)
+names(prop_mimic_class) <- c("Prediction", "Freq")
+prop_mimic_class$total <- sum(prop_mimic_class$Freq)
+prop_mimic_class$Proportion <- prop_mimic_class$Freq / prop_mimic_class$total
+prop_mimic_class$Reference <- "Focal\nbellbird"
+
+others <- conf_df_fp[conf_df_fp$Reference == "Procnias tricarunculatus", ]
+others$Reference <- "Other\nbellbirds"
+
+prop_mimic_psarocolius <- prop_mimic_class[prop_mimic_class$Prediction == "Psarocolius montezuma",]
+
+prop_mimic_psarocolius$Freq <- 0
+prop_mimic_psarocolius$Proportion <- 0
+
+prop_mimic_psarocolius$Prediction <- "Psarocolius guatimozinus" 
+
+
+# proportions observed in adult bellbird
+prop_class <- rbind(
+  prop_mimic_class,
+  prop_mimic_psarocolius,
+  others[, c("Prediction", "Freq", "total", "Proportion", "Reference")]
+)
+
+
+
+
+prop_class$genus <- sapply(
+  strsplit(as.character(prop_class$Prediction), " "),
+  "[[",
+  1
+)
+
+prop_class$type <- ifelse(
+  grepl("guati|eryth|brevis", prop_class$Prediction),
+  "Allopatric",
+  "Sympatric"
+)
+
+prop_class$type[prop_class$genus == "Procnias"] <- "Own\nspecies"
+
+prop_class$type <- factor(
+  prop_class$type,
+  levels = c("Allopatric", "Sympatric", "Own\nspecies")
+)
+
+prop_class$genus <- factor(
+  prop_class$genus,
+  levels = c("Procnias", "Pteroglossus", "Psarocolius", "Ramphastos")
+)
+
+prop_class$Reference <- factor(
+  prop_class$Reference,
+  levels = c("Other\nbellbirds", "Focal\nbellbird")
+)
+
+
+genus_labels <- c(
+  "Procnias" = "Three-wattled bellbird",
+  "Psarocolius" = "Oropendolas",
+  "Pteroglossus" = "Aracaris",
+  "Ramphastos" = "Toucans"
+)
+
+prop_class$common_name <- common_names[as.character(prop_class$Prediction)]
+
+prop_class$common_name <- gsub("-", "\n", prop_class$common_name)
+
+
+prop_class$sp_label <- sapply(
+  strsplit(as.character(prop_class$common_name), " "),
+  "[[",
+  1
+)
+
+prop_class$genus[prop_class$sp_label == "Unassigned"] <- "Procnias"
+
+prop_class$sp_label[prop_class$sp_label == "Three\nwattled" & prop_class$sp_label == "Unassigned"] <- ""
+
+
+prop_class$sp_label_y <- ave(
+  prop_class$Proportion,
+  prop_class$genus,
+  FUN = function(x) {
+    x + log10(max(x) + 0.999) * 0.44
+  }
+)
+
+```
+
+```{r}
+#| warning: false
+
+# settings
+
+base_size <- 14
+
+percent_text_size <- 4
+species_text_size <- 4
+
+
+# GENERA TO PLOT
+
+loop_df <- data.frame(
+  gen = c(
+    "Procnias",
+    "Pteroglossus",
+    "Psarocolius",
+    "Ramphastos"
+  ),
+  label = c("A", "B", "C", "D"),
+  y_max = c(
+  1.3,
+  0.057,
+  0.004,
+  0.16
+ )
+)
+
+
+prop_class <- prop_class[order(prop_class$genus, prop_class$Reference),]
+
+prop_class$sp_label_y[prop_class$genus == "Procnias"] <- c(
+   0.4, 1.03, 0.9, 0.4
+) - 0.05
+
+
+prop_class$sp_label_y[prop_class$genus == "Pteroglossus"] <- c(
+    0.01, 0.01, 0.019, 0.047
+) - 0.003
+
+prop_class$sp_label_y[prop_class$genus == "Psarocolius"] <- c(
+    0.0004, 0.0014, 0.00255, 0.0004
+) + 0.0001
+    
+
+prop_class$sp_label_y[prop_class$genus == "Ramphastos"] <- c(
+    0.026, 0.02, 0.02, 0.13
+) + 0.006
+
+bar_cols <- c("gray", mako(10, alpha = 0.6, begin = 0.2, end = 0.8)[c(2, 8)])
+
+prop_class$prop_label <- paste(
+  round(prop_class$Proportion * 100, 1),
+  "%\n n = ",
+ prop_class$Freq
+)
+
+# PANEL FUNCTION
+make_panel <- function(gen, label, y_max){
+
+  # subset data
+  dat_sub <- subset(prop_class, genus == gen)
+
+  if(gen == "Procnias"){
+
+  dat_sub$type <- factor(
+    dat_sub$type,
+    levels = c(
+        "Own\nspecies",
+      "Allopatric",
+      "Sympatric"
+    )
+  )
+
+  }
+  
+  # exactly 3 tick marks
+  y_breaks <- c(
+    0,
+    y_max / 2,
+    y_max
+  )
+
+  
+    if(gen == "Procnias"){
+
+  fill_scale <- scale_fill_manual(
+    name = "",
+    values = c(
+      "Own\nspecies" = "#28192FB3",
+      "Allopatric" = "#28192FB3",     # not used
+      "Sympatric" = "#DEF5E5B3"      # bellbird color
+    ),
+    breaks = "Sympatric"
+  )
+
+} else {
+
+  fill_scale <- scale_fill_manual(
+    name = "",
+    values = c(
+      "Own\nspecies" = bar_cols[1],
+      "Allopatric" = bar_cols[2],
+      "Sympatric" = bar_cols[3]
+    ),
+    breaks = c(
+      "Allopatric",
+      "Sympatric"
+    )
+  )
+
+}
+  
+  # y-axis formatting
+  if(gen == "Psarocolius"){
+
+    y_scale <- scale_y_continuous(
+      limits = c(0, y_max),
+      breaks = y_breaks,
+      labels = function(x) sprintf("%.1f%%", x * 100)
+    )
+
+  } else {
+
+    y_scale <- scale_y_continuous(
+      limits = c(0, y_max),
+      breaks = y_breaks,
+      labels = scales::percent
+    )
+
+  }
+
+  ggplot(dat_sub, aes(x = Reference, y = Proportion)) +
+
+    geom_bar(
+      aes(
+        group = interaction(Reference, type),
+        fill = type
+      ),
+      position = position_dodge(),
+      stat = "identity"
+    ) +
+
+    # percentages
+    geom_text(
+        lineheight = 0.7,
+      aes(
+        group = interaction(Reference, type),
+        label = dat_sub$prop_label,
+      ),
+      position = position_dodge(width = 0.9),
+      vjust = -0.1,
+      size = percent_text_size
+    ) +
+
+    # species labels
+    geom_text(
+      aes(
+        group = interaction(Reference, type),
+        label = sp_label,
+        y = sp_label_y
+      ),
+      position = position_dodge(width = 0.9),
+      angle = 90,
+      hjust = 0,
+      vjust = 0.5,
+      size = species_text_size
+    ) +
+
+    facet_wrap(
+      ~ genus,
+      labeller = labeller(genus = genus_labels)
+    ) +
+
+    y_scale +
+      fill_scale +
+
+    labs(
+      title = label,
+      x = NULL
+    ) +
+
+    theme_classic(base_size = base_size) +
+
+    theme(
+
+      # legend only in Pteroglossus panel
+      legend.position = if(gen == "Pteroglossus"){
+        c(0.3, 0.8)
+      } else {
+        "none"
+      },
+
+      legend.background = element_rect(
+        fill = "white",
+        color = NA
+      ),
+
+      axis.title.y = element_blank(),
+
+      panel.grid.major.x = element_blank(),
+
+      strip.background = element_rect(
+        fill = "white",
+        color = "black"
+      ),
+
+      strip.text = element_text(
+        size = base_size
+      ),
+
+      axis.text.x = element_text(
+        size = base_size
+      ),
+
+      axis.text.y = element_text(
+        size = base_size
+      ),
+
+      legend.text = element_text(
+        size = base_size
+      ),
+
+      plot.title = element_text(
+        face = "bold",
+        hjust = 0
+      ),
+
+      axis.line = element_line(
+        linewidth = 0.8
+      ),
+
+      axis.ticks = element_line(
+        linewidth = 0.8
+      )
+    )
+}
+
+
+# CREATE PANELS
+
+plot_list <- lapply(
+  seq_len(nrow(loop_df)),
+  function(i){
+
+    make_panel(
+      gen = loop_df$gen[i],
+      label = loop_df$label[i],
+      y_max = loop_df$y_max[i]
+    )
+
+  }
+)
+
+
+# COMBINE PANELS
+
+combined_plot <- plot_grid(
+  plotlist = plot_list,
+  ncol = 2,
+  align = "hv"
+)
+
+# ADD SHARED Y-AXIS TITLE
+
+# SHARED Y-AXIS LABEL
+
+y_label <- ggdraw() +
+  draw_label(
+    "Percentage of vocalizations predicted as",
+    angle = 90,
+    size = base_size + 2
+  )
+
+
+# FINAL PLOT
+
+final_plot <- plot_grid(
+  y_label,
+  combined_plot,
+  ncol = 2,
+  rel_widths = c(0.06, 1)
+)
+
+
+if (!isTRUE(getOption('knitr.in.progress'))) {
+ggsave(
+  filename = "./scripts/focal_vs_other_bellbirds_prediction.png",
+  plot = final_plot,
+  width = 10,
+  height = 8,
+  dpi = 300,
+  device = grDevices::png
+  ) 
+final_plot    
+}
+```
+
+
+![](focal_vs_other_bellbirds_prediction.png){fig-alt="Predictions from the sympatric + allopatric species model. Bars show the proportion of vocalizations from focal bellbirds and other bellbirds assigned by a bird-sound classifier to different taxonomic groups. (A) Vocalizations classified as three-wattled bellbirds (Procnias tricarunculatus) or left unassigned. (B–D) Vocalizations classified as aracaris, oropendolas, and toucans. Names above bars indicate the species-level classifications within each genus. Percentages above bars indicate the proportion of vocalizations assigned to each category."}
+
+### Statistical analysis
+
+Evaluate whether the proportion of vocalizations predicted as sympatric (model) species  vs allopatric species is significantly higher in the focal bellbird than in other bellbirds
+
+```{r}
+
+mimic_other_bellbirds <- sympatric_allopatric_test[sympatric_allopatric_test$predicted_sp != "Procnias tricarunculatus", ]
+
+mimic_focal <- mimic_class[mimic_class$predicted_sp != "Procnias tricarunculatus", ]
+
+mimic_focal$vocalizing_type <- "focal"
+mimic_other_bellbirds$vocalizing_type <- "others"
+
+mimic_bellbirds <- rbind(
+  mimic_focal[, c("predicted_sp", "vocalizing_type")],
+  mimic_other_bellbirds[, c("predicted_sp", "vocalizing_type")]
+)
+
+mimic_bellbirds$vocalizing_type <- factor(
+  mimic_bellbirds$vocalizing_type,
+  levels = c("others", "focal")
+)
+
+mimic_bellbirds$mimic_type <- 
+ifelse(
+  grepl("guati|eryth|brevis", mimic_bellbirds$predicted_sp),
+  0,
+  1
+)
+
+mimic_bellbirds$genus <- sapply(
+  strsplit(as.character(mimic_bellbirds$predicted_sp), " "),
+  "[[",
+  1
+)
+
+cores <- 4
+chains <- 4
+iter <- 4000
+
+priors <- c(
+  prior(normal(0, 1.5), class = "Intercept"),
+  prior(normal(0, 0.7), class = "b"),
+  prior(exponential(1), class = "sd")
+)
+
+only_prior_fit  <- brm(
+  mimic_type ~ vocalizing_type + (1 | genus),
+  data = mimic_bellbirds[mimic_bellbirds$predicted_sp != "nocall",],
+  family = bernoulli(),
+  prior = priors,
+  sample_prior = "only",
+  chains = chains,
+  iter = iter,
+  cores = cores,
+          file = "./data/processed/mimicry_prob_by_simpatry_model_only_priors.RDS", 
+  file_refit = "on_change"
+)
+
+
+mod1 <- brm(
+  mimic_type ~ vocalizing_type  + (1 | genus),
+  data = mimic_bellbirds[mimic_bellbirds$predicted_sp != "nocall",],
+  family = bernoulli(),
+  cores = cores,
+    prior = priors,
+        chains = chains,
+        iter = iter,
+        file = "./data/processed/mimicry_prob_by_simpatry_model.RDS", 
+  file_refit = "on_change"
+)
+
+```
+
+#### Prior check
+
+Priors
+```{r}
+prior_summary(mod1)
+```
+
+Prior predictive checks
+```{r}
+#| fig-height: 3
+
+custom_ppc(only_prior_fit, group = "vocalizing_type", ndraws = 100)
+
+```
+
+#### Fit summary
+
+```{r}
+#| results: "asis"
+#| fig-height: 3
+
+fill_color <- mako(10)[8]
+
+extended_summary(
+  mod1,
+  n.posterior = 1000,
+  fill = fill_color,
+  trace.palette = mako,
+  remove.intercepts = FALSE,
+  highlight = TRUE,
+  print.name = FALSE
+)
+```
+
+Posterior predictive check
+```{r}
+#| fig-height: 3
+
+custom_ppc(mod1, group = "vocalizing_type", ndraws = 100)
+
+```
+
+```{r}
+
+post <- as_draws_df(mod1)
+
+# Odds ratio: focal vs other birds
+focal_vs_others <- exp(post$b_vocalizing_typefocal)
+
+# Predicted probability of sympatric mimicry in focal birds
+p_focal <- posterior_epred(
+  mod1,
+  newdata = data.frame(
+    vocalizing_type = "focal",
+    genus = unique(mimic_bellbirds$genus)[1]
+  ),
+  re_formula = NA
+)
+
+p_focal <- as.numeric(p_focal)
+
+# Predicted probability of sympatric mimicry in other birds
+p_others <- posterior_epred(
+  mod1,
+  newdata = data.frame(
+    vocalizing_type = "others",
+    genus = unique(mimic_bellbirds$genus)[1]
+  ),
+  re_formula = NA
+)
+
+p_others <- as.numeric(p_others)
+
+# Within-group sympatric vs allopatric odds
+focal_ratio <- p_focal / (1 - p_focal)
+other_ratio <- p_others / (1 - p_others)
+```
+
+
+::: {.alert .alert-info}
+
+#### Summary 
+
+- Focal bellbird vocalizations had `r round(median(focal_vs_others), 2)` times greater odds [95% UI: `r paste0(round(quantile(focal_vs_others, 0.025), 2), "–", round(quantile(focal_vs_others, 0.975), 2))`] of being classified as the sympatric rather than the allopatric model species compared with vocalizations from other bellbirds (predicted probability of sympatric classification for focal birds = `r round(median(p_focal), 2)`; for other bellbirds = `r round(median(p_others), 2)`).
+
+- Within focal bellbird vocalizations, the odds of classification as the sympatric model species were `r round(median(focal_ratio), 2)` times greater [95% UI: `r paste0(round(quantile(focal_ratio, 0.025), 2), "–", round(quantile(focal_ratio, 0.975), 2))`] than the odds of classification as closely related allopatric species (predicted probability of sympatric classification for focal birds = `r round(median(p_focal), 2)`; predicted probability of allopatric classification for focal birds = `r round(1 - median(p_focal), 2)`).
+
+- For vocalizations from other bellbirds, the odds of classification as sympatric and allopatric species were similar (odds = `r round(median(other_ratio), 2)` [95% UI: `r paste0(round(quantile(other_ratio, 0.025), 2), "–", round(quantile(other_ratio, 0.975), 2))`]; predicted probability of sympatric classification for other bellbirds = `r round(median(p_others), 2)`; predicted probability of allopatric classification for other bellbirds = `r round(1 - median(p_others), 2)`).
+
+::: 
+
+
+# Only sympatric species
+
+## BirdNET model
+```{r}
+
+mod_eval_symp <- read.csv("./data/processed/birdnet_models/sympatric/sympatric_evaluation.csv")
+
+names(mod_eval_symp) <- gsub("..", " ", names(mod_eval_symp), fixed = TRUE)
+
+print(mod_eval_symp)
+
+```
+
+Keeping low confidence classifications (confidence < optimal threshold) 
+```{r}
+
+# read data
+sympatric_class <- imp_raven(
+  path = "./data/processed/birdnet_classification_outputs/sympatrics/sympatrics_model/",
+  all.data = TRUE,
+  warbler.format = TRUE,
+  pb = FALSE
+)
+
+
+# keep only test data
+test_files <- list.files("/home/m/Dropbox/Projects/bellbird_mimicry/data/processed/birdnet_data/test_data/", full.names = FALSE, recursive = TRUE)
+
+test_files <- basename(gsub("\\\\", "/", test_files))
+
+
+sympatric_class$sound.files <- basename(gsub("\\\\", "/", sympatric_class$sound.files))
+
+# all(sympatric_class$sound.files %in% test_files)
+
+# setdiff(test_files, sympatric_class$sound.files)
+
+# setdiff(sympatric_class$sound.files, test_files)
+
+sympatric_class_test <- sympatric_class[sympatric_class$sound.files %in% test_files, ] 
+
+
+sympatric_class_test$true.positive <- sapply(seq_len(nrow(sympatric_class_test)), function(x){
+    sympatric_class_test$Confidence[x] >= mod_eval_symp$Optimal.Threshold[mod_eval_symp$Class == sympatric_class_test$`Common Name`[x]]
+    })
+    
+sympatric_class_test$`Common Name`[!sympatric_class_test$true.positive] <- "nocall"
+
+
+# rename column
+sympatric_class_test$predicted_sp <- sympatric_class_test$`Common Name`
+
+sympatric_class_test$`Common Name` <- NULL
+
+# read metadata
+est <- readRDS(
+  "./data/processed/extended_selection_table_sympatric_and_allopatric_species.RDS"
+)
+
+# add metadata
+sympatric_class_test$sound.files <- basename(gsub("\\\\", "/", sympatric_class_test$sound.files))
+
+
+sympatric_class_test$vocalizing_sp <- sapply(sympatric_class_test$sound.files, function(x) {
+  est$source[paste0(est$sound.files, ".wav") == x][1]
+})
+
+
+sympatric_class_test <- sympatric_class_test[sympatric_class_test$vocalizing_sp %in% unique(sympatric_class_test$predicted_sp),]
+
+# save confusion matrix
+conf_mat <- confusionMatrix(
+  data = as.factor(sympatric_class_test$predicted_sp),
+  reference = factor(sympatric_class_test$vocalizing_sp, levels = levels(as.factor(sympatric_class_test$predicted_sp)))
+)
+
+conf_df <- as.data.frame(conf_mat$table)
+
+conf_df$total <- sapply(conf_df$Reference, function(x) {
+  sum(sympatric_class_test$vocalizing_sp == x)
+})
+
+conf_df$Proportion <- conf_df$Freq / conf_df$total
+
+conf_df$pred_common_name <- common_names[as.character(conf_df$Prediction)]
+conf_df$ref_common_name <- common_names[as.character(conf_df$Reference)]
+
+# sort levels by genus
+conf_df$pred_common_name <- factor(
+  conf_df$pred_common_name,
+  levels = c(
+    "Three-wattled Bellbird",
+    "Montezuma Oropendola",
+    "Collared Aracari",
+    "Keel-billed Toucan",
+    "Unassigned"
+  )
+)
+
+conf_df$ref_common_name <- factor(
+  conf_df$ref_common_name,
+  levels = c(
+    "Three-wattled Bellbird",
+    "Montezuma Oropendola",
+    "Collared Aracari",
+    "Keel-billed Toucan",
+    "Unassigned"
+  )
+)
+
+ggplot(conf_df[conf_df$ref_common_name != "Unassigned",], aes(x = ref_common_name, y = pred_common_name, fill = Proportion)) +
+  geom_tile() +
+  theme_bw() +
+  coord_equal() +
+  scale_fill_gradient2(low = mako(10)[3], high = mako(10)[7]) +
+  labs(x = "Reference species", y = "Predicted species") +
+  geom_text(aes(label = round(Proportion, 2)), color = "black") +
+  theme_classic() +
+  theme(
+    axis.text.x = element_text(
+      color = "black",
+      size = 11,
+      angle = 30,
+      hjust = 1
+    )
+  )
+
+
+```
+
+Excluding low confidence classifications (confidence >= optimal threshold)
+```{r}
+
+# save confusion matrix
+conf_mat <- confusionMatrix(
+  data = as.factor(sympatric_class_test$predicted_sp[sympatric_class_test$true.positive]),
+  reference = factor(sympatric_class_test$vocalizing_sp[sympatric_class_test$true.positive], levels = levels(as.factor(sympatric_class_test$predicted_sp[sympatric_class_test$true.positive])))
+)
+
+conf_df <- as.data.frame(conf_mat$table)
+
+conf_df$total <- sapply(conf_df$Reference, function(x) {
+  sum(sympatric_class_test$vocalizing_sp[sympatric_class_test$true.positive] == x)
+})
+
+conf_df$Proportion <- conf_df$Freq / conf_df$total
+
+conf_df$pred_common_name <- common_names[as.character(conf_df$Prediction)]
+conf_df$ref_common_name <- common_names[as.character(conf_df$Reference)]
+
+# sort levels by genus
+conf_df$pred_common_name <- factor(
+  conf_df$pred_common_name,
+  levels = c(
+    "Three-wattled Bellbird",
+    "Montezuma Oropendola",
+    "Collared Aracari",
+    "Keel-billed Toucan"
+  )
+)
+
+conf_df$ref_common_name <- factor(
+  conf_df$ref_common_name,
+  levels = c(
+    "Three-wattled Bellbird",
+    "Montezuma Oropendola",
+    "Collared Aracari",
+    "Keel-billed Toucan"
+  )
+)
+
+ggplot(conf_df, aes(x = ref_common_name, y = pred_common_name, fill = Proportion)) +
+  geom_tile() +
+  theme_bw() +
+  coord_equal() +
+  scale_fill_gradient2(low = mako(10)[3], high = mako(10)[7]) +
+  labs(x = "Reference species", y = "Predicted species") +
+  geom_text(aes(label = round(Proportion, 2)), color = "black") +
+  theme_classic() +
+  theme(
+    axis.text.x = element_text(
+      color = "black",
+      size = 11,
+      angle = 30,
+      hjust = 1
+    )
+  )
+
+```
+
+```{r}
+
+# read data
+sympatric_focal <- imp_raven(
+  path = "./data/processed/birdnet_classification_outputs/mimic_bellbird/sympatric_model/",
+  all.data = TRUE,
+  warbler.format = TRUE,
+  pb = FALSE
+)
+
+# filter out low confidence calls
+sympatric_focal$true.positive <- sapply(seq_len(nrow(sympatric_focal)), function(x){
+    if (sympatric_focal$`Common Name`[x] == "nocall")
+        return(FALSE)
+        
+    sympatric_focal$Confidence[x] >= mod_eval_symp$Optimal.Threshold[mod_eval_symp$Class == sympatric_focal$`Common Name`[x]]
+    })
+
+
+
+sympatric_focal$Reference <- "Focal\nbellbird"
+
+sympatric_focal_unfiltered <- sympatric_focal
+
+sympatric_focal$`Common Name`[!sympatric_focal$true.positive] <- "nocall"
+
+# rename column
+sympatric_focal$predicted_sp <- sympatric_focal$`Common Name`
+
+sympatric_focal$`Common Name` <- NULL
+
+# get other bellbirds from previous data
+sympatric_others <- sympatric_class_test[sympatric_class_test$vocalizing_sp == "Procnias tricarunculatus", ]
+
+sympatric_others$vocalizing_sp <- NULL
+
+sympatric_others$Reference <- "Other\nbellbirds"
+
+sympatric <- rbind(
+  sympatric_focal,
+  sympatric_others
+)
+
+prop_sympatric <- table(sympatric$predicted_sp, sympatric$Reference)
+
+prop_sympatric <- data.frame(prop_sympatric)
+names(prop_sympatric) <- c("Prediction", "Vocalizing", "Freq")
+
+# add Psarocolius
+# prop_sympatric2 <- prop_sympatric[3:4, ]
+# prop_sympatric2$Prediction <- "Psarocolius montezuma"
+# prop_sympatric2$Freq <- 0
+
+# prop_sympatric <- rbind(prop_sympatric, prop_sympatric2)
+
+prop_sympatric$total <- sapply(prop_sympatric$Vocalizing, function(x) sum(prop_sympatric$Freq[prop_sympatric$Vocalizing == x]))
+
+prop_sympatric$Proportion <- prop_sympatric$Freq / prop_sympatric$total
+
+prop_sympatric$common_name <- common_names[as.character(
+  prop_sympatric$Prediction
+)]
+
+# order levels
+prop_sympatric$common_name <- factor(
+  prop_sympatric$common_name,
+  levels = c(
+    "Three-wattled Bellbird",
+    "Collared Aracari",
+    "Keel-billed Toucan",
+    "Montezuma Oropendola",
+    "Unassigned"
+  )
+)
+
+```
+
+```{r}
+#| warning: false
+
+# prepare data
+
+prop_sympatric$panel <- as.character(prop_sympatric$common_name)
+
+prop_sympatric$panel[
+  prop_sympatric$common_name %in%
+    c("Three-wattled Bellbird", "Unassigned")
+] <- "Three-wattled Bellbird"
+
+
+prop_sympatric$Vocalizing <- factor(
+  prop_sympatric$Vocalizing,
+  levels = c("Other\nbellbirds", "Focal\nbellbird")
+)
+
+# User settings
+
+base_size <- 14
+percent_text_size <- 4
+
+loop_df <- data.frame(
+  panel = c(
+    "Three-wattled Bellbird",
+    "Collared Aracari",
+    "Montezuma Oropendola",
+    "Keel-billed Toucan"
+  ),
+  label = c(
+    "A",
+    "B",
+    "C",
+    "D"
+  ),
+  y_max = c(
+    1.4,
+    0.1,
+    0.022,
+    0.27
+  )
+)
+
+
+prop_sympatric$prop_label <- paste(
+  round(prop_sympatric$Proportion * 100, 1),
+  "%\n n = ",
+ prop_sympatric$Freq
+)
+
+
+prop_sympatric$sp_label <- ""
+
+prop_sympatric$sp_label[prop_sympatric$panel == "Three-wattled Bellbird"] <- as.character(prop_sympatric$common_name[prop_sympatric$panel == "Three-wattled Bellbird"])
+
+prop_sympatric$sp_label <- gsub("Three-wattled Bellbird", "Three\nwattled", prop_sympatric$sp_label)
+
+prop_sympatric$sp_label <- as.character(prop_sympatric$sp_label)
+
+prop_sympatric$sp_label_y <- prop_sympatric$Proportion + 0.18
+
+
+# panel function
+
+make_panel <- function(panel_name, label, y_max){
+
+  dat_sub <- subset(
+    prop_sympatric, subset = 
+        prop_sympatric$panel == panel_name
+  )
+
+  y_breaks <- c(
+    0,
+    y_max / 2,
+    y_max
+  )
+
+  if(panel_name == "Montezuma Oropendola"){
+
+    y_scale <- scale_y_continuous(
+      limits = c(0, y_max),
+      breaks = y_breaks,
+      labels = function(x) sprintf("%.1f%%", x * 100)
+    )
+
+  } else {
+
+    y_scale <- scale_y_continuous(
+      limits = c(0, y_max),
+      breaks = y_breaks,
+      labels = scales::percent
+    )
+
+  }
+
+    if(panel_name == "Three-wattled Bellbird"){
+
+  fill_scale <- scale_fill_manual(
+    name = "",
+    values = c(
+      "Unassigned" = "#DEF5E5B3",
+      "Three-wattled Bellbird" = "#28192FB3"      # bellbird color
+    ),
+    breaks = "Sympatric"
+  ) 
+} else {
+
+  fill_scale <- scale_fill_manual(
+    name = "",
+    values = c(bar_cols[3]),
+  )
+}
+  
+  ggplot(
+    dat_sub,
+    aes(
+      x = Vocalizing,
+      y = Proportion,
+      fill = common_name
+    )
+  )  +
+    geom_text(
+      aes(
+        group = interaction(Vocalizing, common_name),
+        label = sp_label,
+        y = sp_label_y
+      ),
+      position = position_dodge(width = 0.9),
+      angle = 90,
+      hjust = 0,
+      vjust = 0.5,
+      size = species_text_size
+    ) +
+    geom_bar(
+      stat = "identity",
+      position = position_dodge(width = 0.9)
+    ) +
+      
+    geom_text(
+          lineheight = 0.7,
+      aes(
+        label = dat_sub$prop_label
+      ),
+      position = position_dodge(width = 0.9),
+      vjust = -0.1,
+      size = percent_text_size
+    ) +
+
+    facet_wrap(
+      ~ panel,
+      scales = "free_x"
+    ) +
+
+    y_scale +
+
+    fill_scale +
+
+    labs(
+      title = label,
+      x = NULL
+    ) +
+
+    theme_classic(base_size = base_size) +
+
+    theme(
+
+      legend.position = "none",
+
+      legend.background = element_rect(
+        fill = "white",
+        color = NA
+      ),
+
+      axis.title.y = element_blank(),
+
+      strip.background = element_rect(
+        fill = "white",
+        color = "black"
+      ),
+
+      strip.text = element_text(
+        size = base_size
+      ),
+
+      axis.text.y = element_text(
+        size = base_size
+      ),
+
+      legend.text = element_text(
+        size = base_size
+      ),
+
+      plot.title = element_text(
+        face = "bold",
+        hjust = 0
+      ),
+
+      axis.line = element_line(
+        linewidth = 0.8
+      ),
+
+      axis.ticks = element_line(
+        linewidth = 0.8
+      )
+    )
+}
+
+
+# Create panels
+
+plot_list <- lapply(
+  seq_len(nrow(loop_df)),
+  function(i){
+
+    make_panel(
+      panel_name = loop_df$panel[i],
+      label = loop_df$label[i],
+      y_max = loop_df$y_max[i]
+    )
+
+  }
+)
+
+
+# Combine panels
+combined_plot <- plot_grid(
+  plotlist = plot_list,
+  ncol = 2,
+  align = "hv"
+)
+
+y_label <- ggdraw() +
+  draw_label(
+    "Percentage of vocalizations predicted as",
+    angle = 90,
+    size = base_size
+  )
+
+
+# Final plot
+final_plot <- plot_grid(
+  y_label,
+  combined_plot,
+  ncol = 2,
+  rel_widths = c(0.06, 1)
+)
+
+if (!isTRUE(getOption('knitr.in.progress'))) {
+ggsave(
+  filename = "./scripts/focal_vs_other_bellbirds_sympatric_prediction.png",
+  plot = final_plot,
+  width = 10,
+  height = 8,
+  dpi = 300,
+  device = grDevices::png
+  ) 
+    
+final_plot    
+} 
+```
+
+![](focal_vs_other_bellbirds_sympatric_prediction.png){fig-alt="Predictions from the sympatric species only model. Bars show the proportion of vocalizations from focal bellbirds and other bellbirds assigned by a bird-sound classifier to model species. (A) Vocalizations classified as three-wattled bellbirds (Procnias tricarunculatus) or left unassigned. (B–D) Vocalizations classified as aracaris, oropendolas, and toucans."}
+
+### Statistical analysis
+
+```{r}
+
+sympatric$prediction_type <- ifelse(
+  grepl("rocnias", sympatric$predicted_sp),
+  0,
+  1
+)
+
+sympatric$vocalizing_type <- ifelse(
+  grepl("ocal", sympatric$Reference),
+  "focal",
+  "others"
+)
+
+# order levels
+sympatric$vocalizing_type <- factor(
+  sympatric$vocalizing_type,
+  levels = c("others", "focal")
+)
+
+cores <- 4
+chains <- 4
+iter <- 4000
+
+priors <- c(
+  prior(normal(-3, 1), class = "Intercept"),
+  prior(normal(0, 2), class = "b")
+)
+
+only_prior_fit2  <- brm(
+  prediction_type ~ vocalizing_type + predicted_sp,
+  data = sympatric[sympatric$predicted_sp != "nocall",],
+  family = bernoulli(),
+  prior = priors,
+sample_prior = "only",
+  chains = chains,
+  iter = iter,
+  cores = cores,
+  file = "./data/processed/mimicry_simpatric_only_model_only_priors.RDS",
+  file_refit = "on_change"
+)
+
+
+mod2 <- brm(
+  prediction_type ~ vocalizing_type,
+  data = sympatric[sympatric$predicted_sp != "nocall",],
+  family = bernoulli(),
+  prior = priors,
+  chains = chains,
+  iter = iter,
+  cores = cores,
+  control = list(
+  adapt_delta = 0.999,
+  max_treedepth = 15
+),
+  file = "./data/processed/mimicry_simpatric_only_model.RDS",
+  file_refit = "on_change"
+)
+
+```
+
+#### Prior check
+
+Priors
+```{r}
+prior_summary(mod2)
+```
+
+Prior predictive checks
+```{r}
+#| fig-height: 3
+
+custom_ppc(only_prior_fit2, group = "vocalizing_type", ndraws = 100)
+
+```
+
+### Fit summary
+
+```{r}
+#| results: "asis"
+#| fig-height: 3
+
+fill_color <- mako(10)[8]
+
+extended_summary(
+  mod2,
+  n.posterior = 1000,
+  fill = fill_color,
+  trace.palette = mako,
+  remove.intercepts = FALSE,
+  highlight = TRUE,
+  print.name = FALSE
+)
+```
+
+Posterior predictive check
+```{r}
+#| fig-height: 3
+
+custom_ppc(mod1, group = "vocalizing_type", ndraws = 100)
+
+```
+
+```{r}
+
+# Odds ratio: focal vs other bellbirds
+post2 <- as_draws_df(mod2)
+
+# Odds ratio: focal vs other bellbirds
+focal_vs_others <- exp(post2$b_vocalizing_typefocal)
+
+# Predicted probability of sympatric classification for focal birds
+p_focal <- posterior_epred(
+  mod2,
+  newdata = data.frame(vocalizing_type = "focal")
+)
+
+p_focal <- as.numeric(p_focal)
+
+# Predicted probability of sympatric classification for other bellbirds
+p_others <- posterior_epred(
+  mod2,
+  newdata = data.frame(vocalizing_type = "others")
+)
+
+p_others <- as.numeric(p_others)
+```
+
+
+::: {.alert .alert-info}
+
+#### Summary 
+
+- Focal bellbird vocalizations had `r round(median(focal_vs_others), 2)` times greater odds [95% UI: `r paste0(round(quantile(focal_vs_others, 0.025), 2), "–", round(quantile(focal_vs_others, 0.975), 2))`] of being classified as a sympatric  model species compared with vocalizations from other bellbirds (predicted probability of sympatric classification for focal birds = `r round(median(p_focal), 2)`; for other bellbirds = `r round(median(p_others), 2)`).
+
+::: 
+
+# Mimicry through time
+
+```{r}
+
+mimic_data <- est[est$source == "mimic_bellbird", ]
+
+rec_info <- read.table("./data/raw/Recording_dates_.csv", head = TRUE, sep = ";")
+
+rec_info$date <- gsub("\\/", "-", rec_info$date)
+rec_info$date <- gsub("out", "ago", rec_info$date)
+rec_info$date <- gsub("set", "sep", rec_info$date)
+
+rec_info$org.date <- rec_info$date
+rec_info$date <- as.Date(rec_info$date, format = "%d-%b-%y")
+
+
+mimic_data$orig.sound.files <- attr(mimic_data, "check.res")$orig.sound.files
+
+
+mimic_data$date <- sapply(mimic_data$orig.sound.files, function(x) as.character(rec_info$date[rec_info$sound.files ==
+    x][1]))
+
+mimic_data$date <- as.Date(mimic_data$date)
+
+sympatric_focal_unfiltered$fixed.sound.files <- gsub("Nueva-grabaci\xf3n", "Nueva-grabación", sympatric_focal_unfiltered$sound.files, useBytes = TRUE)
+
+sympatric_focal_unfiltered$fixed.sound.files <- basename(gsub("\\\\", "/", sympatric_focal_unfiltered$fixed.sound.files, useBytes = TRUE))
+
+mimic_data$sound.files <- gsub("Nueva-grabaci\xf3n", "Nueva-grabación", mimic_data$sound.files, useBytes = TRUE)
+
+
+mimic_data$sound.files <- paste0(mimic_data$sound.files, ".wav")
+
+mimic_data$pred_mimic <- sapply(mimic_data$sound.files, function(x) {
+  sympatric_focal_unfiltered$`Common Name`[sympatric_focal_unfiltered$fixed.sound.files == x][1]
+})
+
+# mimic_data <- mimic_data[mimic_data$pred_mimic != "babbling",]
+
+# mimic_data$pred_mimic <- ifelse(is.na(mimic_data$pred_mimic), "nocall", mimic_data$pred_mimic)
+
+agg_pred <- aggregate(orig.sound.files ~ date + pred_mimic, mimic_data, length)
+
+
+out <- lapply(unique(agg_pred$date), function(x) {
+
+    X <- agg_pred[agg_pred$date == x, ]
+    X$prop <- X$orig.sound.files/sum(X$orig.sound.files)
+
+    if (length(unique(X$pred_mimic)) < length(unique(mimic_data$pred_mimic))) {
+
+        new_df <- data.frame(date = X$date[1], pred_mimic = setdiff(c("Procnias tricarunculatus",
+            "Pteroglossus torquatus", "Ramphastos sulfuratus", "Psarocolius montezuma", "nocall"), X$pred_mimic),
+            orig.sound.files = 0, prop = 0)
+  
+        X <- rbind(new_df, X)
+    }
+    
+      X$total <- sum(X$orig.sound.files)
+    return(X)
+})
+
+prop_pred <- do.call(rbind, out)
+
+prop_pred$date.fact <- as.factor(as.character(prop_pred$date))
+
+count_date <- aggregate(orig.sound.files ~ date, prop_pred, sum)
+
+prop_pred$pred_common_name <- common_names[as.character(prop_pred$pred_mimic)]
+
+dat <- prop_pred[prop_pred$pred_mimic != "Psarocolius montezuma",]
+
+dat$julian_day <- as.numeric(format(as.Date(dat$date), "%j"))
+
+
+dat$pred_common_name <- common_names[as.character(dat$pred_mimic)]
+
+
+dat$pred_common_name <- factor(dat$pred_common_name, levels = c( "Three-wattled Bellbird", "Collared Aracari",     "Keel-billed Toucan", "Unassigned"))
+
+
+```
+
+## Statistical analysis
+
+We modeled the probability of producing original sounds as a function of Julian day while allowing both intercepts and temporal slopes to vary among mimic categories (pred_mimic). Rather than fitting a full fixed interaction between date and mimic category, we used a hierarchical varying-slope structure to account for heterogeneity among mimic groups while enabling partial pooling across categories. This approach reduces overparameterization and yields more stable estimates, particularly for mimic groups with limited sample sizes, while still allowing different groups to exhibit distinct temporal trajectories.
+```{r}
+
+# weakly informative priors
+priors <- c(
+# Weakly informative logistic intercept
+prior(normal(0, 2.5), class = "Intercept"),
+# Temporal slope
+prior(normal(0, 1), class = "b"),
+# Random effect standard deviations
+prior(exponential(1), class = "sd")
+)
+
+mod2 <- brm(
+  orig.sound.files | trials(total) ~ 
+    scale(julian_day) +
+    (1 + scale(julian_day) | pred_common_name),
+  family = binomial,
+  data = dat,
+  prior = priors,
+  chains = 4,
+  cores = 4,
+  iter = 4000,
+  control = list(adapt_delta = 0.95), file_refit = "on_change",
+  file = "data/processed/brms_model_prop_pred_mimicry.rds"
+)
+
+# mod2 <- add_criterion(
+#       mod2,
+#       criterion = "loo")
+
+
+only_prior_mod2 <- brm(
+  orig.sound.files | trials(total) ~ 
+    scale(julian_day) +
+    (1 + scale(julian_day) | pred_common_name),
+  family = binomial,
+  data = dat,
+  prior = priors,
+  sample_prior = "only",
+  chains = 4,
+  cores = 4,
+  iter = 4000,
+  control = list(adapt_delta = 0.95), file_refit = "on_change",
+  file = "data/processed/brms_model_prop_pred_mimicry_only_prior.rds"
+)
+
+
+```
+
+### Prior check
+
+Priors
+```{r}
+prior_summary(mod2)
+```
+
+Prior predictive checks
+```{r}
+#| fig-height: 3
+
+custom_ppc(only_prior_mod2, group = "vocalizing_type", ndraws = 100)
+
+```
+
+### Fit summary
+```{r}
+#| results: "asis"
+#| fig-height: 3
+
+fill_color <- mako(10)[8]
+
+extended_summary(
+  mod2,
+  n.posterior = 1000,
+  fill = fill_color,
+  trace.palette = mako,
+  remove.intercepts = FALSE,
+  highlight = TRUE,
+  print.name = FALSE
+)
+```
+
+Posterior predictive check
+```{r}
+#| fig-height: 3
+
+custom_ppc(mod2, group = "vocalizing_type", ndraws = 100)
+
+```
+
+
+```{r}
+
+# Extract posterior draws as base R data.frame
+post <- as.data.frame(mod2)
+
+# Get species levels
+species_levels <- unique(mod2$data$pred_common_name)
+
+# Global slope
+beta_global <- post[, "b_scalejulian_day"]
+# Find all random slope columns automatically
+rand_cols <- grep("^r_pred_common_name\\[.*,scalejulian_day\\]$",
+names(post),
+value = TRUE)
+# Extract species names from column names
+species_levels <- sub("r_pred_common_name\\[(.*),scalejulian_day\\]", "\\1", rand_cols)
+
+
+# Storage matrix
+results <- matrix(NA, nrow = length(species_levels), ncol = 3)
+colnames(results) <- c("mean_slope",
+                       "l95",
+                       "u95")
+
+rownames(results) <- species_levels
+
+
+# Loop through species
+for (i in seq_along(rand_cols)) {
+
+  slope_draws <- beta_global + post[, rand_cols[i]]
+
+  results[i, "mean_slope"]    <- mean(slope_draws)
+  results[i, "l95"]           <- quantile(slope_draws, 0.025)
+  results[i, "u95"]           <- quantile(slope_draws, 0.975)
+}
+
+# Print results
+print(round(results, 4), row.names = TRUE)
+
+```
+
+```{r}
+#| warning: false
+
+# Create prediction grid
+newdata <- expand.grid(
+  julian_day = seq(min(dat$julian_day),
+                   max(dat$julian_day),
+                   length.out = 100),
+  pred_common_name = unique(dat$pred_common_name)
+)
+
+# IMPORTANT: match scaling used in model
+newdata$scalejulian_day <- scale(dat$julian_day)[1]  # dummy to get attributes
+newdata$scalejulian_day <- (newdata$julian_day - mean(dat$julian_day)) /
+                           sd(dat$julian_day)
+
+newdata$total <- round(mean(dat$total), 0)  # use mean total for predictions
+
+# Get posterior expected probabilities
+epred <- posterior_epred(
+  mod2,
+  newdata = newdata,
+  re_formula = NULL
+)
+
+# Posterior mean prediction
+newdata$fit <- colMeans(epred)
+
+# Convert julian day back to date for plotting
+origin_year <- format(as.Date(dat$date[1]), "%Y")
+newdata$date <- as.Date(newdata$julian_day - 1,
+                        origin = paste0(origin_year, "-01-01"))
+
+newdata$fit_prop <- newdata$fit / 100
+
+# include only those for which CI did not include 0
+results_df <- as.data.frame(results)
+sig_spp <- rownames(results_df)[results_df$l95 * results_df$u95 > 0]
+
+newdata <- newdata[newdata$pred_common_name %in% c("Three-wattled Bellbird", "Collared Aracari",     "Keel-billed Toucan", "Unassigned"), ]
+
+
+# Plot
+ggplot(
+  dat[dat$prop > 0, ],
+  aes(
+    x = as.Date(date),
+    y = prop,
+    fill = pred_common_name,
+    col = pred_common_name,
+    size = orig.sound.files
+  )
+) +
+  geom_point(pch = 21) +
+  geom_line(
+    data = newdata,
+    aes(x = date, y = fit_prop, color = pred_common_name),
+    size = 1.2
+  ) +
+  scale_fill_viridis_d(alpha = 0.6, end = 0.8) +
+  scale_color_viridis_d(alpha = 0.8, end = 0.8) +
+  theme_classic() +
+  theme(axis.text.x = element_text(angle = 45, vjust = 0.5)) +
+  labs(
+    x = "Date",
+    y = "Percentage of vocalizations\npredicted as",
+    fill = "Predicted species",
+    color = "Predicted species",
+    size = "Number of recorded\nvocalizations"
+  ) +
+ scale_y_continuous(
+    labels = scales::percent)
+
+```
+
+::: {.alert .alert-info}
+
+### Summary 
+
+- The proportion of vocalizations of its own species increased true time while the proportion for Killed-billed Toucan and unassigned calls decreased 
+- Proportions for Collared Araraci did not show a definitive pattern  
+
+::: 
+
+<!-- add packages used, system details and versions  -->
+
+::: {.callout-note collapse="true"}
+## Session information {.unnumbered .unlisted}
+
+```{r session info}
+#| echo: false
+
+
+# if devtools is installed use devtools::session_info()
+if (requireNamespace("devtools", quietly = TRUE)) {
+  devtools::session_info()
+} else {
+  sessionInfo()
+}
+
+```
+:::
