@@ -1,26 +1,26 @@
 ---
-title: "Cuantificación del mimetismo vocal heteroespecífico mediante aprendizaje profundo: evidencia en un juvenil de pájaro campana"
-subtitle: "Código y presentación"
+title: "Quantifying heterospecific vocal mimicry with deep learning: evidence from a juvenile bellbird"
+subtitle: "Code and presentation"
 author: "Pablo Huertas-Vásquez, Marcos Q. Oliva, Marcelo Araya-Salas"
 toc: false
 ---
 
-Este sitio reúne los análisis y la presentación del estudio. Evaluamos si las vocalizaciones de un juvenil de pájaro campana (*Procnias tricarunculatus*) observado en Monteverde, Costa Rica, representan mimetismo genuino de especies simpátricas o semejanzas producidas por azar. Para ello reentrenamos BirdNET con tres especies simpátricas que pudo imitar, sus parientes alopátricos que no pudieron servirle de modelo y vocalizaciones de otros pájaros campana.
+This site contains the analyses and the presentation of the study. We evaluated whether the vocalizations of a juvenile Three-wattled Bellbird (*Procnias tricarunculatus*) observed in Monteverde, Costa Rica, represent genuine mimicry of sympatric species or resemblances arising by chance. To do so, we retrained BirdNET with three sympatric species it could have imitated, their closely related allopatric species that could not have served as vocal models, and vocalizations of other bellbirds.
 
-Las vocalizaciones del individuo focal se clasificaron sobre todo como especies simpátricas, un sesgo que no apareció en otros pájaros campana. Los sonidos parecidos al tucán pico iris (*Ramphastos sulfuratus*) y al aracari de collar (*Pteroglossus torquatus*) fueron frecuentes en las primeras observaciones, y la clasificación como pájaro campana aumentó con el tiempo.
+The vocalizations of the focal individual were classified mostly as sympatric species, a bias not found in other bellbirds. Sounds resembling the Keel-billed Toucan (*Ramphastos sulfuratus*) and the Collared Aracari (*Pteroglossus torquatus*) were frequent in the first observations, and classification as bellbird increased over time.
 
-## Contenido
+## Contents
 
-- **[Preparación de datos](scripts/birdnet_acoustic_data_prep.qmd)**: anotaciones, tablas de selección y exportación de los datos para BirdNET
-- **[Análisis estadístico](scripts/statistical_analysis.qmd)**: clasificadores, modelos bayesianos y cambios en el tiempo
-- **[Presentación](presentacion.qmd)**: diapositivas de la charla, con los espectrogramas y sus sonidos
+- **[Data preparation](scripts/birdnet_acoustic_data_prep.qmd)**: annotations, selection tables and export of the data for BirdNET
+- **[Statistical analysis](scripts/statistical_analysis.qmd)**: classifiers, Bayesian models and changes over time
+- **[Presentation](presentation.qmd)**: slides of the talk (in Spanish), with the spectrograms and their sounds
 
-## Resultados principales
+## Main results
 
 ::: {.figure-gallery}
-![Espectrogramas del individuo focal (izquierda) y de las especies modelo (centro), con una foto de cada evento (derecha).](output/mimicry_composite_figure.png)
+![Spectrograms of the focal individual (left) and of the model species (center), with a photo of each event (right).](output/mimicry_composite_figure.png)
 :::
 
-## Reproducibilidad
+## Reproducibility
 
-El código está en el [repositorio de GitHub](https://github.com/maRce10/bellbird-mimicry). Los datos de audio y los modelos ajustados son demasiado grandes para alojarlos allí, por lo que los reportes se publican con sus resultados ya calculados.
+The code is available in the [GitHub repository](https://github.com/maRce10/bellbird_vocal_mimicry). Audio data and fitted models are too large to be hosted there, so the reports are published with their results already computed.

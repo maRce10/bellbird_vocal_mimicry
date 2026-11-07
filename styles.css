@@ -34,13 +34,13 @@
     border: 1px solid #eeeeee;
 }
 
-/* slides embedded in the "Presentación" tab, at their 3:2 shape */
-.presentacion-ayuda {
+/* slides embedded in the "Presentation" tab, at their 3:2 shape */
+.slides-help {
     text-align: center;
     margin-bottom: 0.75rem;
 }
 
-iframe.presentacion {
+iframe.slides {
     display: block;
     width: 100%;
     max-width: calc((100vh - 240px) * 1.5);

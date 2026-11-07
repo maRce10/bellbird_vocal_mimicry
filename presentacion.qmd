@@ -1,9 +1,0 @@
----
-title: "Presentación"
-page-layout: full
-toc: false
----
-
-<p class="presentacion-ayuda">Haga clic en las diapositivas y use las flechas para avanzar. También puede <a href="presentation/presentation.html" target="_blank" rel="noopener">abrirla en una pestaña aparte</a> para verla en pantalla completa (tecla F).</p>
-
-<iframe class="presentacion" src="presentation/presentation.html" title="Presentación" allow="fullscreen; autoplay" allowfullscreen></iframe>
