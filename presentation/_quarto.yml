@@ -1,3 +1,4 @@
 # the deck is rendered on its own, in this folder; the website only links to presentation.html
 project:
   type: default
+  post-render: embed_background_videos.R

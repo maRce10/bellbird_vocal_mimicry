@@ -1,0 +1,178 @@
+---
+format:
+  revealjs:
+    fig-width: 10
+    fig-height: 6.2
+    toc: false
+    number-sections: false
+    embed-resources: true
+    auto-section: false
+    auto-play-media: true
+    dpi: 300
+    fig-dpi: 300
+    code-line-numbers: false
+    code-block-border-left: true
+    slide-number: true
+    preview-links: auto
+    css: styles_revealjs.css
+    include-after-body: dynaspec_player.html
+execute:
+  echo: false
+  warning: false
+  message: false
+editor_options:
+  chunk_output_type: console
+---
+
+```{r}
+#| echo: false
+
+# data and images are built by prepare_slide_assets.R (run from the project root)
+
+# install/ load packages
+sketchy::load_packages(
+    packages = c(
+        "knitr",
+        "ggplot2",
+        "dynaSpec",
+        "viridis",
+        "scales"
+    )
+)
+
+## ggplot themes
+theme_function <- theme_classic
+presentation_theme <- theme_function(base_size = 20)
+
+theme_set(presentation_theme)
+
+counts <- read.csv("./data/classification_counts.csv")
+
+# Spanish names shown on the slides
+spanish_names <- c(
+    "Procnias tricarunculatus" = "Pájaro campana",
+    "Psarocolius guatimozinus" = "Oropéndola negra",
+    "Psarocolius montezuma" = "Oropéndola de Moctezuma",
+    "Pteroglossus erythropygius" = "Aracari piquipálido",
+    "Pteroglossus torquatus" = "Aracari de collar",
+    "Ramphastos brevis" = "Tucán del Chocó",
+    "Ramphastos sulfuratus" = "Tucán pico iris"
+)
+
+bird_labels <- c(focal = "Campana focal", other = "Otros campanas")
+
+# species drawing (built by prepare_slide_assets.R); silhouette while a species has none
+sp_file <- function(sp) {
+    f <- file.path("images", paste0("dibujo_", gsub(" ", "_", tolower(sp)), ".png"))
+    if (file.exists(f)) f else "images/sil_oropendola.png"
+}
+
+# drawing as a grob that fits in a box of w x h cm
+sp_grob <- function(sp, w, h, ...) {
+    img <- png::readPNG(sp_file(sp))
+    scale <- min(w / dim(img)[2], h / dim(img)[1])
+    grid::rasterGrob(img, width = grid::unit(dim(img)[2] * scale, "cm"),
+                     height = grid::unit(dim(img)[1] * scale, "cm"), interpolate = TRUE, ...)
+}
+
+# drawing under a discrete x axis position, outside the panel
+sp_below <- function(sp, x, offset, w, h) {
+    annotation_custom(
+        sp_grob(sp, w, h, y = grid::unit(0, "npc") - grid::unit(offset, "cm"), vjust = 1),
+        xmin = x - 0.4, xmax = x + 0.4, ymin = -Inf, ymax = Inf
+    )
+}
+
+# confusion matrix heatmap
+plot_confusion <- function(file, species_order, text_size = 6, sp_size = 1.5, sp_offset = 7) {
+    d <- read.csv(file)
+    d$reference <- factor(spanish_names[d$reference], levels = spanish_names[species_order])
+    d$predicted <- factor(spanish_names[d$predicted], levels = spanish_names[species_order])
+    ggplot(d, aes(x = reference, y = predicted, fill = proportion)) +
+        geom_tile() +
+        geom_text(aes(label = gsub(".", ",", round(proportion, 2), fixed = TRUE)), size = text_size) +
+        lapply(seq_along(species_order), function(i) annotation_custom(
+            sp_grob(species_order[i], sp_size * 1.3, sp_size,
+                    x = grid::unit(0, "npc") - grid::unit(sp_offset, "cm"), hjust = 1),
+            xmin = -Inf, xmax = -Inf, ymin = i - 0.4, ymax = i + 0.4
+        )) +
+        coord_equal(clip = "off") +
+        scale_fill_gradient(low = "white", high = mako(10)[7], name = "Proporción", labels = label_number(decimal.mark = ",")) +
+        labs(x = "Especie de referencia", y = "Especie predicha") +
+        theme(axis.text.x = element_text(angle = 30, hjust = 1, color = "black"),
+              axis.text.y = element_text(color = "black"),
+              axis.title.y = element_text(margin = margin(r = (sp_size * 1.3 + 1.2) * 28.35)))
+}
+
+# dynaSpec comparison of focal (top) and model (bottom), with the photo of the event,
+# as one raw HTML block: one player shows both spectrograms and plays them in sequence
+ds_pair <- function(pair, model_sp, model_title, wl = 512, collevels = seq(-50, 0, 5)) {
+    clips <- paste0("clip_", pair, c("_focal", "_model"))
+    titles <- c("Pájaro campana focal", model_title)
+    drawings <- sp_file(c("Procnias tricarunculatus", model_sp)[1])
+    drawings <- c(drawings, sp_file(model_sp))
+
+    # the time axis is labelled only on the lower spectrogram
+    ds_sound <- function(i, xlab) {
+        dynaspec(file.path("images", paste0(clips[i], ".wav"))) +
+            ds_theme_presentation(xlab = xlab, ylab = "Frec. (kHz)",
+                                  col.panel = "white")
+    }
+
+    x <- ds_compare(ds_sound(1, ""), ds_sound(2, "Tiempo (s)"), flim = c(0, 10), gap = 0.5) +
+        ds_spectrogram(wl = wl, ovlp = 90, collevels = collevels,
+                       pal = function(n) gray(seq(1, 0, length.out = n))) +
+        ds_static(width = 860, height = 330, res = 100, lcol = "#366A9F",
+                  alt = paste("Espectrograma:", paste(titles, collapse = " y "))) +
+        ds_player(speeds = 1, buttons = character())
+    # when knitting, dynaSpec wraps its output in a raw HTML fence: this function writes its own
+    html <- as.character(save_dynaspec(x, play = FALSE, verbose = FALSE))
+    html <- paste(gsub("```(\\{=html\\})?", "", html), collapse = "\n")
+
+    # the player script is the same for all pairs: it loads once, after the slides
+    writeLines(paste0("<script>", sub(".*<script>", "", html)), "dynaspec_player.html")
+    player <- sub("<script>.*", "", html)
+
+    # base64 data makes pandoc stall, so the player points to files that Quarto embeds at the end;
+    # each sound also gets its drawing and name, in a column to the left of the plot
+    for (i in 1:2) {
+        png_file <- file.path("images", paste0("ds_", clips[i], ".png"))
+        png_b64 <- sub('(?s).*?srcset="data:image/png;base64,([^ "]+)[^"]*".*', "\\1", player, perl = TRUE)
+        writeBin(base64enc::base64decode(png_b64), png_file)
+        player <- sub('srcset="data:image/png;base64,[^"]+"', paste0('src="', png_file, '"'), player)
+        player <- sub(
+            '<audio([^>]*) src="data:audio/[^"]+"></audio>',
+            paste0('<audio\\1 src="images/', clips[i], '.wav"></audio>',
+                   '<div class="ds-etiqueta"><img class="ds-dibujo" src="', drawings[i],
+                   '" alt=""><span>', titles[i], '</span></div>'),
+            player
+        )
+    }
+
+    cat(
+        "\n```{=html}\n<div class=\"ds-fila\">",
+        paste0('<div class="ds-col">', player, "</div>"),
+        paste0('<img class="ds-foto" src="images/panel_', pair, '.jpg" alt="">'),
+        "</div>\n```\n", sep = "\n"
+    )
+}
+```
+
+# Cuantificación del mimetismo vocal heteroespecífico mediante aprendizaje profundo: evidencia en un juvenil de pájaro campana {.titulo-largo background-color="white" background-size="cover" background-image="./images/DSC_2564-3.jpeg" background-opacity="0.33"}
+
+</br>
+
+<div class="autores"><span class="autor"><b>Marcelo Araya-Salas</b></span><span class="afiliacion">Universidad de Costa Rica</span><span class="autor">Pablo Huertas-Vásquez</span><span class="afiliacion">Universidad Nacional de Costa Rica</span><span class="autor">Marcos Q. Oliva</span><span class="afiliacion">Royal Holloway University of London</span></div>
+
+<div class="logos"><img class="logo-ucr" src="images/logo_ucr.png" alt="Universidad de Costa Rica"><img class="logo-una" src="images/logo_una.png" alt="Universidad Nacional de Costa Rica"><img class="logo-rhul" src="images/logo_rhul.png" alt="Royal Holloway University of London"></div>
+
+::: footer
+<font size=4><a href="https://marce10.github.io/">https://marce10.github.io/</a></font>
+:::
+
+
+## {background-video="images/mimic_campana.mp4" background-size="contain" background-color="black"}
+
+::: {.notes}
+Video a pantalla completa (66 s, con sonido): el juvenil imitando al aracari y luego al tucán. Empieza solo al llegar a la diapositiva. Para acortarlo, avanzar a la siguiente.
+:::

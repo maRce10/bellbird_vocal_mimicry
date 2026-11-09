@@ -4,7 +4,7 @@ Code and presentation of a study on vocal mimicry in a juvenile Three-wattled Be
 
 **Website:** <https://marce10.github.io/bellbird_vocal_mimicry/>
 
-**Authors:** Pablo Huertas-Vásquez, Marcos Q. Oliva, [Marcelo Araya-Salas](https://marce10.github.io/)
+**Authors:** [Marcelo Araya-Salas](https://marce10.github.io/), Pablo Huertas-Vásquez, Marcos Q. Oliva
 
 ## Overview
 

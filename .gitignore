@@ -27,3 +27,12 @@ Rplots.pdf
 /BirdNET_GLOBAL_6K_V2.4_Labels.txt
 
 /.quarto/
+
+# BirdLife range data (licensed; not to be redistributed)
+/presentation/maps/
+
+# raw video over GitHub's 100 MB limit, video-editor files and Dropbox conflict copies
+/presentation/images/*.MOV
+*.edl
+*onflict*
+*onflicto*

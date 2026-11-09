@@ -1,0 +1,8 @@
+"species","clips_train","recordings_train","clips_test","recordings_test","f1_sympatric_allopatric","f1_sympatric"
+"Procnias tricarunculatus",663,48,137,11,0.9852,0.9889
+"Psarocolius guatimozinus",359,12,51,3,0.9515,NA
+"Psarocolius montezuma",750,34,65,8,0.9538,0.9924
+"Pteroglossus erythropygius",652,36,214,9,0.9271,NA
+"Pteroglossus torquatus",409,30,53,7,0.7244,0.9905
+"Ramphastos brevis",623,29,185,7,0.9892,NA
+"Ramphastos sulfuratus",1040,22,316,5,0.9873,0.9937

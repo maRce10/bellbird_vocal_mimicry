@@ -1,0 +1,8 @@
+"species","file","snr"
+"Ramphastos sulfuratus","../data/processed/birdnet_data/train_data/Ramphastos sulfuratus/Ramphastos-sulfuratus-72698.wav_5.wav",60.2
+"Ramphastos brevis","../data/processed/birdnet_data/train_data/Ramphastos brevis/Ramphastos_brevis-XC168608.wav_7.wav",56
+"Pteroglossus torquatus","../data/processed/birdnet_data/test_data/Pteroglossus torquatus/Pteroglossus_torquatus-ML650092789.wav_3.wav",55.7
+"Pteroglossus erythropygius","../data/processed/birdnet_data/test_data/Pteroglossus erythropygius/Pteroglossus_erythropygius-GBIF2243631424.wav_2.wav",42.3
+"Psarocolius montezuma","../data/processed/birdnet_data/train_data/Psarocolius montezuma/Psarocolius_montezuma-ML72628.wav_7.wav",43.3
+"Psarocolius guatimozinus","../data/processed/birdnet_data/test_data/Psarocolius guatimozinus/Psarocolius_guatimozinus-ML616107520.wav_26.wav",37.6
+"Procnias tricarunculatus","../data/processed/birdnet_data/test_data/Procnias tricarunculatus/Procnias-tricarunculatus-406563.wav_2.wav",62.8

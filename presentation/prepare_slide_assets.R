@@ -206,3 +206,26 @@ for (nm in names(src)) {
                                 "-vf", "scale=1600:-2", "-q:v", "4",
                                 shQuote(file.path(out_img, paste0("photo_", nm, ".jpg"))))) == 0)
 }
+
+# ---- training data of the classifiers -----------------------------------------
+# recordings and 2 s clips per species used to train and test BirdNET (80/20 split by
+# recording), and the F1 score of each class at its optimal threshold in each model
+count_split <- function(split) {
+  d <- file.path("data/processed/birdnet_data", split)
+  do.call(rbind, lapply(list.dirs(d, recursive = FALSE), function(p) {
+    f <- list.files(p, pattern = "\\.wav$")
+    data.frame(species = basename(p), clips = length(f),
+               recordings = length(unique(sub("\\.wav_[0-9]+\\.wav$", "", f))))
+  }))
+}
+train <- count_split("train_data")
+test <- count_split("test_data")
+training <- merge(train, test, by = "species", suffixes = c("_train", "_test"))
+f1 <- function(model) {
+  e <- read.csv(file.path("data/processed/birdnet_models", model, paste0(model, "_evaluation.csv")),
+                check.names = FALSE)
+  setNames(e[["F1 Score (opt)"]], e$Class)
+}
+training$f1_sympatric_allopatric <- f1("sympatric_and_allopatric")[training$species]
+training$f1_sympatric <- f1("sympatric")[training$species]
+write.csv(training, file.path("presentation/data", "entrenamiento_modelos.csv"), row.names = FALSE)
