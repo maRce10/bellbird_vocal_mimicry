@@ -298,6 +298,11 @@ mod_cal <- brm(
 
 ```{r}
 
+sympatric_allopatric_test$vocalizing_sp <- sapply(sympatric_allopatric_test$sound.files, function(x) {
+  est$source[paste0(est$sound.files, ".wav") == x][1]
+})
+
+sympatric_allopatric_test$vocalizing_sp <- common_names[as.character(sympatric_allopatric_test$vocalizing_sp)]
 
 idx <- tapply(
   seq_len(nrow(sympatric_allopatric_test)),
@@ -312,7 +317,7 @@ highest_conf <- sympatric_allopatric_test[
 # save confusion matrix
 conf_mat <- confusionMatrix(
   data = as.factor(highest_conf$predicted_sp),
-  reference = as.factor(highest_conf$vocalizing_sp, levels = unique))
+  reference = as.factor(highest_conf$vocalizing_sp))
 
 conf_df <- as.data.frame(conf_mat$table)
 
@@ -479,11 +484,11 @@ mimic_wide <- reshape(
 
 names(mimic_wide) <- make.names(names(mimic_wide))
 
-mimic_wide$type <- "Focal\nbellbird"
+mimic_wide$type <- "Focal_bellbird"
 
 sympatric_wide <- sympatric_allopatric_wide[sympatric_allopatric_wide$vocalizing_sp == "Three-wattled Bellbird", ]
 
-sympatric_wide$type <- "Other\nbellbirds"
+sympatric_wide$type <- "Other_bellbirds"
 
 sympatric_wide$vocalizing_sp <- NULL
 
@@ -502,8 +507,9 @@ pp <- fitted(
 # extract calibrated probabilities
 p_est <- pp[, "Estimate", ]
 
-
-# lookup table
+# species lookup
+# 1 = sympatric
+# 0 = allopatric
 
 species_lookup <- data.frame(
   species = c(
@@ -526,10 +532,10 @@ species_lookup <- data.frame(
   ),
   mimic_type = c(
     NA,
-    1,
-    0,
     0,
     1,
+    1,
+    0,
     0,
     1
   ),
@@ -537,432 +543,187 @@ species_lookup <- data.frame(
 )
 
 
-# function to generate one imputed dataset
-make_imputed_dataset <- function(
+# most probable species for each sound
+
+pred_species <- colnames(p_est)[
+  apply(
+    p_est,
+    1,
+    which.max
+  )
+]
+
+pred_species <- sub(
+  "^P\\(Y = ",
+  "",
+  pred_species
+)
+
+pred_species <- sub(
+  "\\)$",
+  "",
+  pred_species
+)
+
+# create one threshold-specific dataset
+
+make_threshold_dataset <- function(
+  threshold,
   p_est,
-  mimic_wide,
+  pred_species,
+  mimic_sympatric_wide,
   species_lookup
 ){
 
-  sampled_species <- apply(
-    p_est,
-    1,
-    function(x){
+  # calibrated probability of being a bellbird vocalization
 
-      sample(
-        species_lookup$species,
-        size = 1,
-        prob = x
-      )
+  p_bellbird <- p_est[
+    ,
+    "P(Y = Three-wattled Bellbird)"
+  ]
 
-    }
-  )
+  # keep sounds below threshold
+
+  keep <- p_bellbird < threshold
 
   dat <- data.frame(
-    sound.files = mimic_wide$sound.files,
-    species = sampled_species,
+    sound.files = mimic_sympatric_wide$sound.files[keep],
+    vocalizing_type = mimic_sympatric_wide$type[keep],
+    species = pred_species[keep],
     stringsAsFactors = FALSE
   )
 
-  dat <- merge(
-    dat,
-    species_lookup,
-    by = "species"
-  )
-
-  # remove sounds imputed as bellbird
+  # remove sounds whose most probable species is bellbird
 
   dat <- dat[
-    !is.na(dat$mimic_type),
+    dat$species != "Three-wattled Bellbird",
   ]
 
-  dat$genus <- factor(dat$genus)
+  # add genus and sympatric/allopatric status
+
+  dat$genus <- species_lookup$genus[
+    match(
+      dat$species,
+      species_lookup$species
+    )
+  ]
+
+  dat$mimic_type <- species_lookup$mimic_type[
+    match(
+      dat$species,
+      species_lookup$species
+    )
+  ]
+
+  dat$vocalizing_type <- factor(
+    dat$vocalizing_type,
+    levels = c(
+      "Other_bellbirds",
+      "Focal_bellbird"
+    )
+  )
+
+  dat$genus <- factor(
+    dat$genus
+  )
 
   dat
 
 }
 
 
-# only focal bird sounds
+# threshold values
 
-pp <- fitted(
-  mod_cal,
-  newdata = mimic_wide,
-  summary = TRUE
+threshold_values <- seq(
+  0,
+  0.9,
+  by = 0.1
 )
 
-p_est <- pp[, "Estimate", ]
 
-
-# generate imputations
+# number of imputations
 
 n_imp <- 100
 
-imp_list <- vector(
-  "list",
-  n_imp
+
+# ensure thresholds are represented approximately equally
+
+thresholds <- rep(
+  threshold_values,
+  length.out = n_imp
 )
 
-for(i in seq_len(n_imp)){
+thresholds <- sample(
+  thresholds
+)
 
-  imp_list[[i]] <- make_imputed_dataset(
-    p_est = p_est,
-    mimic_wide = mimic_wide,
-    species_lookup = species_lookup
+
+# generate imputed datasets
+
+imp_list <- lapply(
+  thresholds,
+  function(thr){
+
+    make_threshold_dataset(
+      threshold = thr,
+      p_est = p_est,
+      pred_species = pred_species,
+      mimic_sympatric_wide = mimic_sympatric_wide,
+      species_lookup = species_lookup
+    )
+
+  }
+)
+
+
+# sanity checks
+
+table(thresholds)
+
+summary(
+  sapply(
+    imp_list,
+    nrow
   )
+)
 
-}
+summary(
+  sapply(
+    imp_list,
+    function(x)
+      mean(x$mimic_type)
+  )
+)
 
 
-# fit intercept-only model
+# priors
+
+priors <- c(
+  prior(normal(0, 1.5), class = "Intercept"),
+  prior(normal(0, 1), class = "b"),
+  prior(exponential(1), class = "sd")
+)
+
+
+# fit model
 
 mod_imp <- brm_multiple(
-  mimic_type ~ ,
+  mimic_type ~ vocalizing_type + (1 | genus),
   data = imp_list,
   family = bernoulli(),
-  prior = prior(normal(0, 1.5), class = "Intercept"),
+  prior = priors,
   chains = 1,
   cores = 4,
   iter = 2000,
   seed = 123,
-  file = "./data/processed/mimicry_prob_by_simpatry_model_multiple_imputation.RDS",
   control = list(
-    adapt_delta = 0.95,
+    adapt_delta = 0.99,
     max_treedepth = 15
   )
 )
+beepr::beep(3)
 
 summary(mod_imp)
-
-hypothesis(
-  mod_imp,
-  "Intercept > 0"
-)
-
-```
-
-
-# Compare prob of sympatric vs allopatric v1
-```{r}
-# read data
-mimic_class <- imp_raven(
-  path = "./data/processed/birdnet_classification_outputs/mimic_bellbird/sympatrics_and_allopatrics_model_all_sp_confidence/",
-  all.data = TRUE,
-  warbler.format = TRUE,
-  pb = FALSE
-)
-
-mimic_class$sound.files <- basename(
-  gsub("\\\\", "/", mimic_class$sound.files)
-)
-
-mimic_class$predicted_sp <-
-  common_names[
-    as.character(
-      mimic_class$`Common Name`
-    )
-  ]
-
-mimic_wide <- reshape(
-  mimic_class[
-    ,
-    c(
-      "sound.files",
-      "predicted_sp",
-      "Confidence"
-    )
-  ],
-  idvar = "sound.files",
-  timevar = "predicted_sp",
-  direction = "wide"
-)
-
-names(mimic_wide) <- make.names(
-  names(mimic_wide)
-)
-
-
-# calibrated probabilities for focal bird sounds
-
-pp <- fitted(
-  mod_cal,
-  newdata = mimic_wide,
-  summary = TRUE
-)
-
-p_est <- pp[, "Estimate", ]
-
-
-# genus-specific sympatric - allopatric contrasts
-
-toucan_delta <-
-  p_est[, "P(Y = Keel-billed Toucan)"] -
-  p_est[, "P(Y = Choco Toucan)"]
-
-aracari_delta <-
-  p_est[, "P(Y = Collared Aracari)"] -
-  p_est[, "P(Y = Pale-mandibled Aracari)"]
-
-orop_delta <-
-  p_est[, "P(Y = Montezuma Oropendola)"] -
-  p_est[, "P(Y = Chestnut-headed Oropendola)"]
-
-
-# long-format dataset
-
-dat_long <- rbind(
-
-  data.frame(
-    sound.files = mimic_wide$sound.files,
-    genus = "Toucan",
-    delta = toucan_delta
-  ),
-
-  data.frame(
-    sound.files = mimic_wide$sound.files,
-    genus = "Aracari",
-    delta = aracari_delta
-  ),
-
-  data.frame(
-    sound.files = mimic_wide$sound.files,
-    genus = "Oropendola",
-    delta = orop_delta
-  )
-
-)
-
-dat_long$genus <- factor(
-  dat_long$genus
-)
-
-
-# inspect raw data
-
-tapply(
-  dat_long$delta,
-  dat_long$genus,
-  summary
-)
-
-aggregate(
-  delta ~ genus,
-  data = dat_long,
-  mean
-)
-
-mean(dat_long$delta > 0)
-
-
-# priors
-
-priors <- c(
-  prior(
-    normal(0, 0.5),
-    class = "Intercept"
-  ),
-  prior(
-    exponential(1),
-    class = "sd"
-  )
-)
-
-
-# model
-
-mod_delta <- brm(
-  delta ~ 1 + (1 | genus),
-  data = dat_long,
-  family = gaussian(),
-  prior = priors,
-  chains = 4,
-  cores = 4,
-  iter = 4000,
-  seed = 123,
-  file = "./data/processed/sympatric_probability_bias_by_genus.RDS",
-  control = list(
-    adapt_delta = 0.99,
-    max_treedepth = 15
-  )
-)
-
-
-summary(mod_delta)
-
-
-# test whether sympatric probability
-# exceeds allopatric probability
-
-hypothesis(
-  mod_delta,
-  "Intercept > 0"
-)
-
-
-# posterior mean sympatric advantage
-
-fixef(mod_delta)
-
-
-# genus-specific means
-
-aggregate(
-  delta ~ genus,
-  data = dat_long,
-  mean
-)
-```
-
-# Compare prob of sympatric vs allopatric v2
-```{r}
-# genus-specific sympatric and allopatric probabilities
-
-p_sympatric_toucan <-
-  p_est[, "P(Y = Keel-billed Toucan)"]
-
-p_allopatric_toucan <-
-  p_est[, "P(Y = Choco Toucan)"]
-
-
-p_sympatric_aracari <-
-  p_est[, "P(Y = Collared Aracari)"]
-
-p_allopatric_aracari <-
-  p_est[, "P(Y = Pale-mandibled Aracari)"]
-
-
-p_sympatric_orop <-
-  p_est[, "P(Y = Montezuma Oropendola)"]
-
-p_allopatric_orop <-
-  p_est[, "P(Y = Chestnut-headed Oropendola)"]
-
-
-# small constant to avoid log(0)
-
-eps <- 1e-6
-
-
-# log(sympatric / allopatric)
-
-toucan_log_ratio <- log(
-  (p_sympatric_toucan + eps) /
-    (p_allopatric_toucan + eps)
-)
-
-aracari_log_ratio <- log(
-  (p_sympatric_aracari + eps) /
-    (p_allopatric_aracari + eps)
-)
-
-orop_log_ratio <- log(
-  (p_sympatric_orop + eps) /
-    (p_allopatric_orop + eps)
-)
-
-
-# long-format dataset
-
-dat_long <- rbind(
-
-  data.frame(
-    sound.files = mimic_wide$sound.files,
-    genus = "Toucan",
-    log_ratio = toucan_log_ratio
-  ),
-
-  data.frame(
-    sound.files = mimic_wide$sound.files,
-    genus = "Aracari",
-    log_ratio = aracari_log_ratio
-  ),
-
-  data.frame(
-    sound.files = mimic_wide$sound.files,
-    genus = "Oropendola",
-    log_ratio = orop_log_ratio
-  )
-
-)
-
-dat_long$genus <- factor(
-  dat_long$genus,
-  levels = c(
-    "Aracari",
-    "Oropendola",
-    "Toucan"
-  )
-)
-
-
-# inspect data
-
-summary(dat_long$log_ratio)
-
-tapply(
-  dat_long$log_ratio,
-  dat_long$genus,
-  summary
-)
-
-aggregate(
-  log_ratio ~ genus,
-  data = dat_long,
-  mean
-)
-
-
-# priors
-
-priors <- c(
-
-  # genus-specific means
-  prior(
-    normal(0, 2),
-    class = "b"
-  ),
-
-  # residual SD
-  prior(
-    exponential(1),
-    class = "sigma"
-  ),
-
-  # Student-t degrees of freedom
-  prior(
-    gamma(2, 0.1),
-    class = "nu"
-  )
-
-)
-
-
-# model
-
-mod_log_ratio <- brm(
-  log_ratio ~ 0 + genus,
-  data = dat_long,
-  family = student(),
-  prior = priors,
-  chains = 4,
-  cores = 4,
-  iter = 2000,
-  seed = 123,
-  file = "./data/processed/sympatric_log_ratio_model.RDS",
-  control = list(
-    adapt_delta = 0.99,
-    max_treedepth = 15
-  ),
-  file_refit = "always"
-)
-
-
-summary(mod_log_ratio)
-
-
-# test whether sympatric probability exceeds allopatric probability
-
-fixef(mod_log_ratio)
 
 ```
 
@@ -1575,33 +1336,17 @@ sympatric_class <- imp_raven(
   pb = FALSE
 )
 
-# keep only test data
-test_files <- list.files("/home/m/Dropbox/Projects/bellbird_mimicry/data/processed/birdnet_data/test_data/", full.names = FALSE, recursive = TRUE)
-
-test_files <- basename(gsub("\\\\", "/", test_files))
-
-
-sympatric_class$sound.files <- basename(gsub("\\\\", "/", sympatric_class$sound.files))
-
-all(sympatric_class$sound.files %in% test_files)
-
-setdiff(test_files, sympatric_class$sound.files)
-
-setdiff(sympatric_class$sound.files, test_files)
-
-sympatric_class_test <- sympatric_class[sympatric_class$sound.files %in% test_files, ] 
-
-sympatric_class_test$true.positive <- sapply(seq_len(nrow(sympatric_class_test)), function(x){
-    sympatric_class_test$Confidence[x] >= mod_eval_symp$Optimal.Threshold[mod_eval_symp$Class == sympatric_class_test$`Common Name`[x]]
+sympatric_class$true.positive <- sapply(seq_len(nrow(sympatric_class)), function(x){
+    sympatric_class$Confidence[x] >= mod_eval_symp$Optimal.Threshold[mod_eval_symp$Class == sympatric_class$`Common Name`[x]]
     })
     
-sympatric_class_test$`Common Name`[!sympatric_class_test$true.positive] <- "nocall"
+sympatric_class$`Common Name`[!sympatric_class$true.positive] <- "nocall"
 
 
 # rename column
-sympatric_class_test$predicted_sp <- sympatric_class_test$`Common Name`
+sympatric_class$predicted_sp <- sympatric_class$`Common Name`
 
-sympatric_class_test$`Common Name` <- NULL
+sympatric_class$`Common Name` <- NULL
 
 # read metadata
 est <- readRDS(
@@ -1609,26 +1354,26 @@ est <- readRDS(
 )
 
 # add metadata
-sympatric_class_test$sound.files <- basename(gsub("\\\\", "/", sympatric_class_test$sound.files))
+sympatric_class$sound.files <- basename(gsub("\\\\", "/", sympatric_class$sound.files))
 
 
-sympatric_class_test$vocalizing_sp <- sapply(sympatric_class_test$sound.files, function(x) {
+sympatric_class$vocalizing_sp <- sapply(sympatric_class$sound.files, function(x) {
   est$source[paste0(est$sound.files, ".wav") == x][1]
 })
 
 
-sympatric_class_test <- sympatric_class_test[sympatric_class_test$vocalizing_sp %in% unique(sympatric_class_test$predicted_sp),]
+sympatric_class <- sympatric_class[sympatric_class$vocalizing_sp %in% unique(sympatric_class$predicted_sp),]
 
 # save confusion matrix
 conf_mat <- confusionMatrix(
-  data = as.factor(sympatric_class_test$predicted_sp),
-  reference = factor(sympatric_class_test$vocalizing_sp, levels = levels(as.factor(sympatric_class_test$predicted_sp)))
+  data = as.factor(sympatric_class$predicted_sp),
+  reference = factor(sympatric_class$vocalizing_sp, levels = levels(as.factor(sympatric_class$predicted_sp)))
 )
 
 conf_df <- as.data.frame(conf_mat$table)
 
 conf_df$total <- sapply(conf_df$Reference, function(x) {
-  sum(sympatric_class_test$vocalizing_sp == x)
+  sum(sympatric_class$vocalizing_sp == x)
 })
 
 conf_df$Proportion <- conf_df$Freq / conf_df$total
@@ -1684,14 +1429,14 @@ Excluding low confidence classifications (confidence >= optimal threshold)
 
 # save confusion matrix
 conf_mat <- confusionMatrix(
-  data = as.factor(sympatric_class_test$predicted_sp[sympatric_class_test$true.positive]),
-  reference = factor(sympatric_class_test$vocalizing_sp[sympatric_class_test$true.positive], levels = levels(as.factor(sympatric_class_test$predicted_sp[sympatric_class_test$true.positive])))
+  data = as.factor(sympatric_class$predicted_sp[sympatric_class$true.positive]),
+  reference = factor(sympatric_class$vocalizing_sp[sympatric_class$true.positive], levels = levels(as.factor(sympatric_class$predicted_sp[sympatric_class$true.positive])))
 )
 
 conf_df <- as.data.frame(conf_mat$table)
 
 conf_df$total <- sapply(conf_df$Reference, function(x) {
-  sum(sympatric_class_test$vocalizing_sp[sympatric_class_test$true.positive] == x)
+  sum(sympatric_class$vocalizing_sp[sympatric_class$true.positive] == x)
 })
 
 conf_df$Proportion <- conf_df$Freq / conf_df$total
@@ -1771,7 +1516,7 @@ sympatric_focal$predicted_sp <- sympatric_focal$`Common Name`
 sympatric_focal$`Common Name` <- NULL
 
 # get other bellbirds from previous data
-sympatric_others <- sympatric_class_test[sympatric_class_test$vocalizing_sp == "Procnias tricarunculatus", ]
+sympatric_others <- sympatric_class[sympatric_class$vocalizing_sp == "Procnias tricarunculatus", ]
 
 sympatric_others$vocalizing_sp <- NULL
 

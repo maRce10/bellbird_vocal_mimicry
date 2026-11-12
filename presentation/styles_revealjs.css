@@ -74,7 +74,7 @@
 .reveal .slide h4,
 .reveal .slide h5,
 .reveal .slide h6 {
-    color:  #366A9FFF;
+    color:  var(--col-titulo, #366A9F);
 }
 
 /* Center images on slides */
@@ -85,7 +85,7 @@
 }
 
 .custom-color {
-    color: #38AAAC; /* Cambia el color según lo necesites */
+    color: var(--col-acento, #38AAAC); /* Cambia el color según lo necesites */
 }
 
 .reveal img {
@@ -95,7 +95,7 @@
 
 /* Message cards (Quarto callouts): soft tint, rounded, no side bar */
 .reveal div.callout.callout-note.callout-style-simple {
-    background: rgba(220, 237, 249, 0.95);
+    background: var(--col-caja, #DCEDF9);
     color: #1f2d3d;
     border: 1px solid rgba(54, 106, 159, 0.22);
     border-left: 1px solid rgba(54, 106, 159, 0.22);
@@ -120,7 +120,7 @@
 /* Emphasis picks up the title colour */
 .reveal div.callout.callout-note.callout-style-simple strong,
 .reveal div.callout.callout-note.callout-style-simple b {
-    color: #366A9FFF;
+    color: var(--col-titulo, #366A9F);
 }
 
 /* Side-by-side cards share the same height and keep a gap between them */
@@ -227,14 +227,14 @@
     font-size: 22px;
     font-style: italic;
     text-align: center;
-    color: #555;
+    color: var(--col-secundario, #555555);
 }
 
 /* Large numbers on the key-result slide */
 .cifra {
     font-size: 72px;
     font-weight: bold;
-    color: #366A9FFF;
+    color: var(--col-titulo, #366A9F);
     line-height: 1.1;
     text-align: center;
 }
@@ -433,7 +433,7 @@
 .reveal .mapa-nota {
     font-size: 15px;
     text-align: center;
-    color: #555;
+    color: var(--col-secundario, #555555);
 }
 
 .reveal .nota-birdnet {
@@ -463,8 +463,8 @@
 .reveal table.tabla-entrenamiento th {
     font-size: 21px;
     font-weight: 600;
-    color: #366A9F;
-    border-bottom: 2px solid #366A9F;
+    color: var(--col-titulo, #366A9F);
+    border-bottom: 2px solid var(--col-titulo, #366A9F);
     padding: 4px 7px;
     text-align: center;
     white-space: nowrap;
@@ -498,7 +498,7 @@
 
 .reveal table.tabla-entrenamiento td.ent-simp { color: var(--col-simp, #d1603d); font-weight: 600; }
 .reveal table.tabla-entrenamiento td.ent-alop { color: var(--col-alop, #3a7ca5); font-weight: 600; }
-.reveal table.tabla-entrenamiento td.ent-otro { color: #555; font-weight: 600; white-space: nowrap; }
+.reveal table.tabla-entrenamiento td.ent-otro { color: var(--col-secundario, #555555); font-weight: 600; white-space: nowrap; }
 
 /* analysis workflow diagram: 3 rows of steps in a zigzag, joined by arrows */
 .reveal .flujo {
@@ -553,7 +553,7 @@
     align-items: center;
     justify-content: center;
     font-size: 46px;
-    color: #366A9F;
+    color: var(--col-titulo, #366A9F);
     font-weight: 600;
 }
 
@@ -598,7 +598,7 @@
 }
 
 .reveal .modelo-titulo b {
-    color: #366A9F;
+    color: var(--col-titulo, #366A9F);
 }
 
 /* the two confusion matrices fit their columns and the slide height */
@@ -642,7 +642,7 @@
 
 .reveal table.tabla-especies th.mapa-simpatrico { color: var(--col-simp, #d1603d); }
 .reveal table.tabla-especies th.mapa-alopatrico { color: var(--col-alop, #3a7ca5); }
-.reveal table.tabla-especies th.esp-campana-tit { color: #555; }
+.reveal table.tabla-especies th.esp-campana-tit { color: var(--col-secundario, #555555); }
 
 .reveal table.tabla-especies th.esp-genero {
     text-align: right;
@@ -683,7 +683,7 @@
 
 .reveal table.tabla-especies .esp-otros {
     font-weight: 600;
-    color: #555;
+    color: var(--col-secundario, #555555);
 }
 
 /* references slide (not counted; linked from the resources slide) */
@@ -748,9 +748,93 @@
     position: absolute;
     left: 0;
     right: 0;
-    bottom: -26px;
+    /* vertical position: proportion of the slide height from the top, set per subtitle with
+       style="--alto: 0.1" (0 = top, 1 = bottom); default 0.1, just below the top of a 16:9 video */
+    top: calc(var(--alto, 0.1) * 100%);
     text-align: center;
     color: #fff;
-    font-size: 26px;
+    /* text size, set per subtitle with style="--tamano: 30px" (default 26px) */
+    font-size: var(--tamano, 26px);
     text-shadow: 0 1px 4px rgba(0, 0, 0, 0.85);
+}
+
+/* video that fills the slide height (adult with spectrogram): subtitle at the top edge */
+.reveal .subtitulo-video.sobre-espectro {
+    --alto: 0.025;
+}
+
+/* arrows from the hypothesis boxes to their predictions (Semejanza vocal) */
+.reveal .flechas-prediccion {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    justify-items: center;
+    margin: 0.1em 0 -0.4em 0;
+}
+.reveal .flechas-prediccion svg {
+    width: 34px;
+    height: 52px;
+}
+.reveal .flechas-prediccion path {
+    fill: none;
+    stroke: var(--col-titulo, #366A9F);
+    stroke-width: 5;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+}
+
+/* smaller slide title: add the class to the slide heading, e.g. ## Title {.titulo-pequeno} */
+.reveal .slide.titulo-pequeno h2 {
+    font-size: 1.25em;
+}
+
+/* thin grey line under every slide title, except on slides with class .no-linea-titulo
+   (e.g. ## Referencias {.no-linea-titulo}) and on slides with an empty title (videos) */
+.reveal .slide:not(.no-linea-titulo) > h2:not(:empty)::after {
+    content: "";
+    display: block;
+    width: 90%;
+    margin: 0.2em auto 0;
+    border-bottom: 1.5px solid #c8c8c8;
+}
+
+/* slide with a photo filling the left edge (given as the slide's background-image with
+   background-size="auto 100%" background-position="left center"); the content moves right.
+   --ancho-foto: space left for the photo (photo width = its width/height ratio x 700 px, plus a margin). */
+.reveal .slides section.foto-izquierda {
+    box-sizing: border-box;
+    padding-left: var(--ancho-foto, 330px);
+}
+
+/* the same with the photo on the right edge (background-position="right center") */
+.reveal .slides section.foto-derecha {
+    box-sizing: border-box;
+    padding-right: var(--ancho-foto, 270px);
+}
+
+/* acknowledgements slide with the photo on the right: smaller text and QR so all fits */
+.reveal .slide.foto-derecha .recursos {
+    font-size: 20px;
+}
+.reveal .slide.foto-derecha .recursos a {
+    overflow-wrap: anywhere;
+}
+.reveal .slide.foto-derecha .qr-recursos {
+    font-size: 21px;
+}
+.reveal .slide.foto-derecha .qr-recursos img {
+    width: 210px;
+    height: 210px;
+    padding: 10px;
+}
+
+/* "link" in the references never splits across lines */
+.reveal ol.referencias a {
+    white-space: nowrap;
+    word-break: normal;
+    overflow-wrap: normal;
+}
+
+/* drawings next to the spectrograms flipped horizontally, on slides with class .dibujos-volteados */
+.reveal .slide.dibujos-volteados img.ds-dibujo {
+    transform: scaleX(-1);
 }
