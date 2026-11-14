@@ -8,6 +8,13 @@
 
 @font-face {
     font-family: "Source Sans Pro";
+    src: url("fonts/sourcesanspro-italic.woff2") format("woff2");
+    font-weight: 400;
+    font-style: italic;
+}
+
+@font-face {
+    font-family: "Source Sans Pro";
     src: url("fonts/sourcesanspro-semibold.woff2") format("woff2");
     font-weight: 600;
     font-style: normal;
@@ -275,6 +282,19 @@
 .reveal .autores .afiliacion {
     text-align: left;
     padding-left: 0.7em;
+}
+
+/* Opening slide: title in black, names and affiliations in the title blue */
+.reveal .slide.portada h1 {
+    color: var(--col-texto, #222);
+}
+
+.reveal .slide.portada .autores {
+    color: var(--col-titulo, #366A9F);
+}
+
+.reveal .slide.portada .autores .autor {
+    border-right-color: var(--col-titulo, #366A9F);
 }
 
 /* University logos on the opening slide; heights differ because the files have different margins */
@@ -622,7 +642,9 @@
 /* species, distribution maps and training data in one table */
 .reveal table.tabla-especies {
     width: auto;
-    border-collapse: collapse;
+    /* separate, with vertical spacing only, so each pair of sister species gets its own box */
+    border-collapse: separate;
+    border-spacing: 0 6px;
     margin: 0 auto;
     font-size: 18px;
 }
@@ -802,7 +824,8 @@
    --ancho-foto: space left for the photo (photo width = its width/height ratio x 700 px, plus a margin). */
 .reveal .slides section.foto-izquierda {
     box-sizing: border-box;
-    padding-left: var(--ancho-foto, 330px);
+    padding-left: var(--ancho-foto, 310px);
+    padding-right: 50px;   /* content shifted towards the photo */
 }
 
 /* the same with the photo on the right edge (background-position="right center") */
@@ -838,3 +861,60 @@
 .reveal .slide.dibujos-volteados img.ds-dibujo {
     transform: scaleX(-1);
 }
+
+/* external-link icon in the references (replaces the DOI / URL text) */
+.reveal ol.referencias svg.icono-enlace {
+    width: 0.95em;
+    height: 0.95em;
+    vertical-align: -0.12em;
+    fill: none;
+    stroke: currentColor;
+    stroke-width: 2.2;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+}
+/* keeps the link icon on the line of the word before it */
+.reveal ol.referencias .sin-corte {
+    white-space: nowrap;
+}
+
+/* grey rounded box around each pair of sister species (genus name + sympatric + allopatric),
+   same grey and thickness as the line under the slide titles */
+.reveal table.tabla-especies tr:not(:first-child) > th.esp-genero,
+.reveal table.tabla-especies tr:not(:first-child) > td:nth-child(2),
+.reveal table.tabla-especies tr:not(:first-child) > td:nth-child(3) {
+    border-top: 1.5px solid #c8c8c8;
+    border-bottom: 1.5px solid #c8c8c8;
+}
+.reveal table.tabla-especies tr:not(:first-child) > th.esp-genero {
+    border-left: 1.5px solid #c8c8c8;
+    border-radius: 10px 0 0 10px;
+}
+.reveal table.tabla-especies tr:not(:first-child) > td:nth-child(3) {
+    border-right: 1.5px solid #c8c8c8;
+    border-radius: 0 10px 10px 0;
+}
+
+/* Diagram layer that stays on the slide but fades when the next step appears */
+.reveal .slides section .fragment.atenuar {
+    opacity: 1;
+    visibility: inherit;
+}
+
+.reveal .slides section .fragment.atenuar.visible,
+.reveal .slides section img.tenue {
+    opacity: var(--opacidad-atenuada, 0.5);
+}
+
+/* Secondary note under a plot, in grey (the species-type colours inside it are kept) */
+.reveal .nota-gris {
+    color: var(--col-secundario, #555555);
+    font-size: 24px;      /* the size of its text, so that the line height follows it */
+    line-height: 1.35;
+}
+
+/* Text sizes used in the slides (instead of <font size=...>): large for the main statements,
+   medium for boxes and notes, small for the footer links */
+.reveal .texto-grande { font-size: 32px; }
+.reveal .texto-medio { font-size: 24px; }
+.reveal .texto-pequeno { font-size: 18px; }

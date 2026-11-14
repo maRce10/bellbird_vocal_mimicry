@@ -38,13 +38,15 @@ add_source <- function(x) {
 test_files <- basename(list.files("data/processed/birdnet_data/test_data/", recursive = TRUE))
 
 focal_sa <- read_class(paste0(cls, "mimic_bellbird/sympatrics_and_allopatrics_model/"), eval_sa)
-other_sa <- read_class(paste0(cls, "other_bellbirds/sympatrics_and_allopatrics_model/"), eval_sa)
 focal_s <- read_class(paste0(cls, "mimic_bellbird/sympatric_model/"), eval_s)
 refs_sa <- add_source(read_class(paste0(cls, "sympatrics_and_allopactrics/sympatrics_and_allopatrics_model/"), eval_sa))
 refs_s <- add_source(read_class(paste0(cls, "sympatrics/sympatrics_model/"), eval_s))
 
-# Fig. 5 of the manuscript draft compares against every reference bellbird clip
-other_s <- refs_s[refs_s$source == "Procnias tricarunculatus", ]
+# other bellbirds: held-out (test) clips only. Most clips in other_bellbirds/ (and in the
+# reference set) were used to train the models, so they are classified as bellbird by
+# construction and would exaggerate the focal vs others contrast
+other_sa <- refs_sa[refs_sa$source %in% "Procnias tricarunculatus" & refs_sa$file %in% test_files, ]
+other_s <- refs_s[refs_s$source %in% "Procnias tricarunculatus" & refs_s$file %in% test_files, ]
 
 tab <- function(x, model, bird) {
   d <- as.data.frame(table(pred = x$pred), stringsAsFactors = FALSE)
@@ -59,25 +61,22 @@ counts <- rbind(
 )
 write.csv(counts, file.path(out_data, "classification_counts.csv"), row.names = FALSE)
 
-# confusion matrices over calls above threshold, as in manuscript Figs. 2 and 4
+# confusion matrices over calls above threshold, held-out (test) clips only, as in manuscript
+# Figs. 2 and 4 (the training clips would overstate the performance)
 confusion <- function(x) {
   x <- x[x$pred != "nocall" & !is.na(x$source) & x$source %in% x$pred, ]
   d <- as.data.frame(table(reference = x$source, predicted = x$pred), stringsAsFactors = FALSE)
   d$proportion <- d$Freq / ave(d$Freq, d$reference, FUN = sum)
   d
 }
-write.csv(confusion(refs_sa), file.path(out_data, "confusion_sympatric_allopatric.csv"), row.names = FALSE)
-write.csv(confusion(refs_s), file.path(out_data, "confusion_sympatric.csv"), row.names = FALSE)
-
-# held-out clips only, for comparison (not plotted)
 write.csv(confusion(refs_sa[refs_sa$file %in% test_files, ]),
-          file.path(out_data, "confusion_sympatric_allopatric_test_only.csv"), row.names = FALSE)
+          file.path(out_data, "confusion_sympatric_allopatric.csv"), row.names = FALSE)
 write.csv(confusion(refs_s[refs_s$file %in% test_files, ]),
-          file.path(out_data, "confusion_sympatric_test_only.csv"), row.names = FALSE)
+          file.path(out_data, "confusion_sympatric.csv"), row.names = FALSE)
 
 # ---- change through time ----------------------------------------------------
 
-mod <- readRDS("data/processed/brms_model_prop_pred_mimicry.rds")
+mod <- readRDS("data/processed/brms_model_prop_pred_mimicry_olre.rds")
 points <- data.frame(
   julian_day = mod$data$julian_day,
   species = as.character(mod$data$pred_common_name),
@@ -94,7 +93,9 @@ grid <- expand.grid(
   stringsAsFactors = FALSE
 )
 grid$total <- 100 # so that the expected count / 100 is a proportion
-grid$prop <- colMeans(posterior_epred(mod, newdata = grid)) / 100
+# category effects only, averaging over the observation-level (overdispersion) effect
+grid$prop <- colMeans(posterior_epred(mod, newdata = grid,
+                                      re_formula = ~ (1 + scale(julian_day) | pred_common_name))) / 100
 grid$date <- as.Date(grid$julian_day - 1, origin = "2020-01-01")
 names(grid)[names(grid) == "pred_common_name"] <- "species"
 write.csv(grid, file.path(out_data, "temporal_curves.csv"), row.names = FALSE)

@@ -929,7 +929,10 @@ Evaluate whether the proportion of vocalizations predicted as sympatric (model) 
 
 ```{r}
 
-mimic_other_bellbirds <- sympatric_allopatric_test[sympatric_allopatric_test$predicted_sp != "Procnias tricarunculatus", ]
+# other bellbirds: held-out (test) clips of other bellbirds only. sympatric_allopatric_test has
+# the test clips of every species, so it must be filtered by the vocalizing species too
+mimic_other_bellbirds <- sympatric_allopatric_test[sympatric_allopatric_test$vocalizing_sp == "Procnias tricarunculatus" &
+                                                     sympatric_allopatric_test$predicted_sp != "Procnias tricarunculatus", ]
 
 mimic_focal <- mimic_class[mimic_class$predicted_sp != "Procnias tricarunculatus", ]
 
@@ -937,9 +940,13 @@ mimic_focal$vocalizing_type <- "focal"
 mimic_other_bellbirds$vocalizing_type <- "others"
 
 mimic_bellbirds <- rbind(
-  mimic_focal[, c("predicted_sp", "vocalizing_type")],
-  mimic_other_bellbirds[, c("predicted_sp", "vocalizing_type")]
+  mimic_focal[, c("sound.files", "predicted_sp", "vocalizing_type")],
+  mimic_other_bellbirds[, c("sound.files", "predicted_sp", "vocalizing_type")]
 )
+
+# original recording of each clip (clips are cut from longer recordings: "<recording>.wav_<n>.wav"),
+# as a random effect, since clips from the same recording are not independent
+mimic_bellbirds$recording <- sub("\\.wav_[0-9]+\\.wav$", "", mimic_bellbirds$sound.files)
 
 mimic_bellbirds$vocalizing_type <- factor(
   mimic_bellbirds$vocalizing_type,
@@ -963,35 +970,48 @@ cores <- 4
 chains <- 4
 iter <- 4000
 
+# heterospecific classifications by bird and type (1 = sympatric, 0 = allopatric). Held-out
+# clips of other bellbirds are almost never classified as a model species (3 clips, all
+# allopatric), so a focal vs others contrast is not estimable: an earlier version with
+# vocalizing_type and (1 | genus) (3 genera) gave hundreds of divergent transitions and an
+# estimate set by the prior. The model therefore estimates, for the focal bird only, the
+# probability that a heterospecific classification is the sympatric rather than the allopatric
+# relative (0.5 if both were equally likely by chance), with the recording as a random effect
+table(mimic_bellbirds$vocalizing_type[mimic_bellbirds$predicted_sp != "nocall"],
+      mimic_bellbirds$mimic_type[mimic_bellbirds$predicted_sp != "nocall"])
+
+mimic_focal_model <- mimic_bellbirds[mimic_bellbirds$predicted_sp != "nocall" &
+                                       mimic_bellbirds$vocalizing_type == "focal", ]
+
 priors <- c(
   prior(normal(0, 1.5), class = "Intercept"),
-  prior(normal(0, 0.7), class = "b"),
   prior(exponential(1), class = "sd")
 )
 
 only_prior_fit  <- brm(
-  mimic_type ~ vocalizing_type + (1 | genus),
-  data = mimic_bellbirds[mimic_bellbirds$predicted_sp != "nocall",],
+  mimic_type ~ 1 + (1 | recording),
+  data = mimic_focal_model,
   family = bernoulli(),
   prior = priors,
   sample_prior = "only",
   chains = chains,
   iter = iter,
   cores = cores,
-          file = "./data/processed/mimicry_prob_by_simpatry_model_only_priors.RDS", 
+          file = "./data/processed/mimicry_prob_by_simpatry_focal_model_only_priors.RDS", 
   file_refit = "on_change"
 )
 
 
 mod1 <- brm(
-  mimic_type ~ vocalizing_type  + (1 | genus),
-  data = mimic_bellbirds[mimic_bellbirds$predicted_sp != "nocall",],
+  mimic_type ~ 1 + (1 | recording),
+  data = mimic_focal_model,
   family = bernoulli(),
   cores = cores,
     prior = priors,
         chains = chains,
         iter = iter,
-        file = "./data/processed/mimicry_prob_by_simpatry_model.RDS", 
+  control = list(adapt_delta = 0.99),
+        file = "./data/processed/mimicry_prob_by_simpatry_focal_model.RDS", 
   file_refit = "on_change"
 )
 
@@ -1043,36 +1063,15 @@ custom_ppc(mod1, group = "vocalizing_type", ndraws = 100)
 
 post <- as_draws_df(mod1)
 
-# Odds ratio: focal vs other birds
-focal_vs_others <- exp(post$b_vocalizing_typefocal)
-
-# Predicted probability of sympatric mimicry in focal birds
-p_focal <- posterior_epred(
-  mod1,
-  newdata = data.frame(
-    vocalizing_type = "focal",
-    genus = unique(mimic_bellbirds$genus)[1]
-  ),
-  re_formula = NA
-)
-
-p_focal <- as.numeric(p_focal)
-
-# Predicted probability of sympatric mimicry in other birds
-p_others <- posterior_epred(
-  mod1,
-  newdata = data.frame(
-    vocalizing_type = "others",
-    genus = unique(mimic_bellbirds$genus)[1]
-  ),
-  re_formula = NA
-)
-
-p_others <- as.numeric(p_others)
-
-# Within-group sympatric vs allopatric odds
+# probability that a heterospecific classification of the focal bird is the sympatric model
+# species (population level, an average recording), and its odds against the allopatric relative
+p_focal <- plogis(post$b_Intercept)
 focal_ratio <- p_focal / (1 - p_focal)
-other_ratio <- p_others / (1 - p_others)
+
+# other bellbirds (held-out clips): raw counts only
+n_others <- sum(mimic_bellbirds$vocalizing_type == "others" & mimic_bellbirds$predicted_sp != "nocall")
+n_others_symp <- sum(mimic_bellbirds$vocalizing_type == "others" & mimic_bellbirds$predicted_sp != "nocall" &
+                       mimic_bellbirds$mimic_type == 1)
 ```
 
 
@@ -1080,11 +1079,9 @@ other_ratio <- p_others / (1 - p_others)
 
 #### Summary 
 
-- Focal bellbird vocalizations had `r round(median(focal_vs_others), 2)` times greater odds [95% UI: `r paste0(round(quantile(focal_vs_others, 0.025), 2), "–", round(quantile(focal_vs_others, 0.975), 2))`] of being classified as the sympatric rather than the allopatric model species compared with vocalizations from other bellbirds (predicted probability of sympatric classification for focal birds = `r round(median(p_focal), 2)`; for other bellbirds = `r round(median(p_others), 2)`).
+- When a focal bellbird vocalization was classified as a heterospecific, it was classified as the sympatric model species with probability `r round(median(p_focal), 2)` [95% UI: `r paste0(round(quantile(p_focal, 0.025), 2), "–", round(quantile(p_focal, 0.975), 2))`], i.e. `r round(median(focal_ratio), 1)` times [95% UI: `r paste0(round(quantile(focal_ratio, 0.025), 1), "–", round(quantile(focal_ratio, 0.975), 1))`] more often than as its closely related allopatric relative (0.5, or equal odds, expected by chance).
 
-- Within focal bellbird vocalizations, the odds of classification as the sympatric model species were `r round(median(focal_ratio), 2)` times greater [95% UI: `r paste0(round(quantile(focal_ratio, 0.025), 2), "–", round(quantile(focal_ratio, 0.975), 2))`] than the odds of classification as closely related allopatric species (predicted probability of sympatric classification for focal birds = `r round(median(p_focal), 2)`; predicted probability of allopatric classification for focal birds = `r round(1 - median(p_focal), 2)`).
-
-- For vocalizations from other bellbirds, the odds of classification as sympatric and allopatric species were similar (odds = `r round(median(other_ratio), 2)` [95% UI: `r paste0(round(quantile(other_ratio, 0.025), 2), "–", round(quantile(other_ratio, 0.975), 2))`]; predicted probability of sympatric classification for other bellbirds = `r round(median(p_others), 2)`; predicted probability of allopatric classification for other bellbirds = `r round(1 - median(p_others), 2)`).
+- Held-out vocalizations of other bellbirds were almost never classified as any of these species (`r n_others` clips, `r n_others_symp` of them as a sympatric species), so a formal focal vs others contrast of this bias is not estimable.
 
 ::: 
 
@@ -1642,17 +1639,28 @@ sympatric$vocalizing_type <- factor(
   levels = c("others", "focal")
 )
 
+# original recording of each clip, as a random effect (clips from the same recording are not
+# independent)
+sympatric$recording <- sub("\\.wav_[0-9]+\\.wav$", "",
+                           basename(gsub("\\\\", "/", sympatric$sound.files, useBytes = TRUE)))
+
+# no other bellbird clip is classified as a model species (complete separation), so the
+# focal vs others contrast is bounded by the prior; report the raw counts alongside it
+table(sympatric$vocalizing_type[sympatric$predicted_sp != "nocall"],
+      sympatric$prediction_type[sympatric$predicted_sp != "nocall"])
+
 cores <- 4
 chains <- 4
 iter <- 4000
 
 priors <- c(
   prior(normal(-3, 1), class = "Intercept"),
-  prior(normal(0, 2), class = "b")
+  prior(normal(0, 2), class = "b"),
+  prior(exponential(1), class = "sd")
 )
 
 only_prior_fit2  <- brm(
-  prediction_type ~ vocalizing_type + predicted_sp,
+  prediction_type ~ vocalizing_type + (1 | recording),
   data = sympatric[sympatric$predicted_sp != "nocall",],
   family = bernoulli(),
   prior = priors,
@@ -1660,13 +1668,13 @@ sample_prior = "only",
   chains = chains,
   iter = iter,
   cores = cores,
-  file = "./data/processed/mimicry_simpatric_only_model_only_priors.RDS",
+  file = "./data/processed/mimicry_simpatric_only_model_recording_re_only_priors.RDS",
   file_refit = "on_change"
 )
 
 
 mod2 <- brm(
-  prediction_type ~ vocalizing_type,
+  prediction_type ~ vocalizing_type + (1 | recording),
   data = sympatric[sympatric$predicted_sp != "nocall",],
   family = bernoulli(),
   prior = priors,
@@ -1677,7 +1685,7 @@ mod2 <- brm(
   adapt_delta = 0.999,
   max_treedepth = 15
 ),
-  file = "./data/processed/mimicry_simpatric_only_model.RDS",
+  file = "./data/processed/mimicry_simpatric_only_model_recording_re.RDS",
   file_refit = "on_change"
 )
 
@@ -1721,7 +1729,7 @@ Posterior predictive check
 ```{r}
 #| fig-height: 3
 
-custom_ppc(mod1, group = "vocalizing_type", ndraws = 100)
+custom_ppc(mod2, group = "vocalizing_type", ndraws = 100)
 
 ```
 
@@ -1736,7 +1744,8 @@ focal_vs_others <- exp(post2$b_vocalizing_typefocal)
 # Predicted probability of sympatric classification for focal birds
 p_focal <- posterior_epred(
   mod2,
-  newdata = data.frame(vocalizing_type = "focal")
+  newdata = data.frame(vocalizing_type = "focal", recording = NA),
+  re_formula = NA
 )
 
 p_focal <- as.numeric(p_focal)
@@ -1744,7 +1753,8 @@ p_focal <- as.numeric(p_focal)
 # Predicted probability of sympatric classification for other bellbirds
 p_others <- posterior_epred(
   mod2,
-  newdata = data.frame(vocalizing_type = "others")
+  newdata = data.frame(vocalizing_type = "others", recording = NA),
+  re_formula = NA
 )
 
 p_others <- as.numeric(p_others)
@@ -1755,7 +1765,7 @@ p_others <- as.numeric(p_others)
 
 #### Summary 
 
-- Focal bellbird vocalizations had `r round(median(focal_vs_others), 2)` times greater odds [95% UI: `r paste0(round(quantile(focal_vs_others, 0.025), 2), "–", round(quantile(focal_vs_others, 0.975), 2))`] of being classified as a sympatric  model species compared with vocalizations from other bellbirds (predicted probability of sympatric classification for focal birds = `r round(median(p_focal), 2)`; for other bellbirds = `r round(median(p_others), 2)`).
+- `r sum(sympatric$vocalizing_type == "focal" & sympatric$predicted_sp != "nocall" & sympatric$prediction_type == 1)` of `r sum(sympatric$vocalizing_type == "focal" & sympatric$predicted_sp != "nocall")` focal bellbird vocalizations were classified as a sympatric model species (predicted probability = `r round(median(p_focal), 2)` [95% UI: `r paste0(round(quantile(p_focal, 0.025), 2), "–", round(quantile(p_focal, 0.975), 2))`]), against none of the `r sum(sympatric$vocalizing_type == "others" & sympatric$predicted_sp != "nocall")` held-out vocalizations of other bellbirds. Because no other bellbird vocalization was classified as a model species, the odds ratio (`r round(median(focal_vs_others))` [95% UI: `r paste0(round(quantile(focal_vs_others, 0.025)), "–", round(quantile(focal_vs_others, 0.975)))`]) is bounded by the prior: only its lower limit is informative (the focal bird has at least ~`r round(quantile(focal_vs_others, 0.025))` times greater odds).
 
 ::: 
 
@@ -1833,6 +1843,9 @@ dat <- prop_pred[prop_pred$pred_mimic != "Psarocolius montezuma",]
 
 dat$julian_day <- as.numeric(format(as.Date(dat$date), "%j"))
 
+# one level per row (day x category): observation-level random effect for overdispersion
+dat$obs <- factor(seq_len(nrow(dat)))
+
 
 dat$pred_common_name <- common_names[as.character(dat$pred_mimic)]
 
@@ -1844,7 +1857,7 @@ dat$pred_common_name <- factor(dat$pred_common_name, levels = c( "Three-wattled 
 
 ## Statistical analysis
 
-We modeled the probability of producing original sounds as a function of Julian day while allowing both intercepts and temporal slopes to vary among mimic categories (pred_mimic). Rather than fitting a full fixed interaction between date and mimic category, we used a hierarchical varying-slope structure to account for heterogeneity among mimic groups while enabling partial pooling across categories. This approach reduces overparameterization and yields more stable estimates, particularly for mimic groups with limited sample sizes, while still allowing different groups to exhibit distinct temporal trajectories.
+We modeled the probability of producing original sounds as a function of Julian day while allowing both intercepts and temporal slopes to vary among mimic categories (pred_mimic). Rather than fitting a full fixed interaction between date and mimic category, we used a hierarchical varying-slope structure to account for heterogeneity among mimic groups while enabling partial pooling across categories. This approach reduces overparameterization and yields more stable estimates, particularly for mimic groups with limited sample sizes, while still allowing different groups to exhibit distinct temporal trajectories. An observation-level random effect (one level per day and category) absorbs extra-binomial variation among days, so that the uncertainty of the slopes is not underestimated.
 ```{r}
 
 # weakly informative priors
@@ -1860,7 +1873,8 @@ prior(exponential(1), class = "sd")
 mod2 <- brm(
   orig.sound.files | trials(total) ~ 
     scale(julian_day) +
-    (1 + scale(julian_day) | pred_common_name),
+    (1 + scale(julian_day) | pred_common_name) +
+    (1 | obs),
   family = binomial,
   data = dat,
   prior = priors,
@@ -1868,7 +1882,7 @@ mod2 <- brm(
   cores = 4,
   iter = 4000,
   control = list(adapt_delta = 0.95), file_refit = "on_change",
-  file = "data/processed/brms_model_prop_pred_mimicry.rds"
+  file = "data/processed/brms_model_prop_pred_mimicry_olre.rds"
 )
 
 # mod2 <- add_criterion(
@@ -1879,7 +1893,8 @@ mod2 <- brm(
 only_prior_mod2 <- brm(
   orig.sound.files | trials(total) ~ 
     scale(julian_day) +
-    (1 + scale(julian_day) | pred_common_name),
+    (1 + scale(julian_day) | pred_common_name) +
+    (1 | obs),
   family = binomial,
   data = dat,
   prior = priors,
@@ -1888,7 +1903,7 @@ only_prior_mod2 <- brm(
   cores = 4,
   iter = 4000,
   control = list(adapt_delta = 0.95), file_refit = "on_change",
-  file = "data/processed/brms_model_prop_pred_mimicry_only_prior.rds"
+  file = "data/processed/brms_model_prop_pred_mimicry_olre_only_prior.rds"
 )
 
 
@@ -2000,7 +2015,8 @@ newdata$total <- round(mean(dat$total), 0)  # use mean total for predictions
 epred <- posterior_epred(
   mod2,
   newdata = newdata,
-  re_formula = NULL
+  # category effects only, averaging over the observation-level effect
+  re_formula = ~ (1 + scale(julian_day) | pred_common_name)
 )
 
 # Posterior mean prediction
