@@ -918,3 +918,31 @@
 .reveal .texto-grande { font-size: 32px; }
 .reveal .texto-medio { font-size: 24px; }
 .reveal .texto-pequeno { font-size: 18px; }
+
+/* evolution of vocal learning slides: the phylogeny on the left and, on the second slide,
+   bullet points on the right (same columns on both slides, so the tree does not move) */
+.reveal .columns.filogenia-columnas {
+    display: flex;
+    align-items: center;
+}
+
+.reveal .filogenia-puntos {
+    font-size: 30px;
+    line-height: 1.4;
+}
+
+.reveal .filogenia-puntos li {
+    margin-bottom: 0.6em;
+}
+
+/* example spectrogram of the bellbird, with its axes, in the training data slide */
+.reveal .slide table.tabla-especies td.esp-campana img.esp-espectro {
+    height: 190px;
+}
+
+/* Implicaciones: all the text in the boxes in black, the bold words too */
+.reveal .slides section.foto-izquierda .callout,
+.reveal .slides section.foto-izquierda .callout b,
+.reveal .slides section.foto-izquierda .callout strong {
+    color: black;
+}

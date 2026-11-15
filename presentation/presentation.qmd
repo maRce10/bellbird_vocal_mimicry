@@ -167,7 +167,8 @@ plot_confusion <- function(file, species_order, text_size = 6, sp_size = 1.5, sp
 
 # confusion matrix for the performance slide: abbreviated scientific names, first species at
 # the top-left, a drawing above each column and no colour legend (values are printed)
-plot_conf <- function(file, species_order, text_size = 5, draw_w = 1, draw_h = 0.85) {
+# (draw_side = TRUE: the drawings go right after the species names instead of above the columns)
+plot_conf <- function(file, species_order, text_size = 5, draw_w = 1, draw_h = 0.85, draw_side = FALSE) {
     d <- read.csv(file)
     short <- setNames(paste0(substr(species_order, 1, 1), ". ", sub(".* ", "", species_order)), species_order)
     d$reference <- factor(short[d$reference], levels = short)
@@ -189,9 +190,12 @@ plot_conf <- function(file, species_order, text_size = 5, draw_w = 1, draw_h = 0
     ggplot(d, aes(x = reference, y = predicted, fill = proportion)) +
         geom_tile(colour = "white", linewidth = 0.6) +
         geom_text(aes(label = label, colour = text_col), size = text_size, family = font_family) +
-        lapply(seq_len(n), function(i) annotation_custom(
+        (if (draw_side) lapply(seq_len(n), function(i) annotation_custom(
+            sp_grob(species_order[i], draw_w, draw_h, x = grid::unit(0, "npc") - grid::unit(0.15, "cm"), hjust = 1),
+            xmin = 0.5, xmax = 0.5, ymin = n + 1 - i - 0.45, ymax = n + 1 - i + 0.45))
+         else lapply(seq_len(n), function(i) annotation_custom(
             sp_grob(species_order[i], draw_w, draw_h, y = grid::unit(0, "npc") + grid::unit(0.15, "cm"), vjust = 0),
-            xmin = i - 0.45, xmax = i + 0.45, ymin = n + 0.5, ymax = n + 0.5)) +
+            xmin = i - 0.45, xmax = i + 0.45, ymin = n + 0.5, ymax = n + 0.5))) +
         coord_equal(clip = "off") +
         scale_fill_gradient(low = "white", high = mako(10)[6], limits = c(0, 1), guide = "none") +
         scale_colour_identity() +
@@ -201,9 +205,10 @@ plot_conf <- function(file, species_order, text_size = 5, draw_w = 1, draw_h = 0
         # semibold: the only regular-weight italic installed is Light Italic, too thin in colour
         theme(axis.text.x = ggtext::element_markdown(angle = 35, hjust = 1, vjust = 1,
                                                      family = "Source Sans Pro Semibold"),
-              axis.text.y = ggtext::element_markdown(hjust = 1, family = "Source Sans Pro Semibold"),
+              axis.text.y = ggtext::element_markdown(hjust = 1, family = "Source Sans Pro Semibold",
+                                                     margin = margin(r = if (draw_side) (draw_w + 0.3) * 28.35 else 2.2)),
               axis.line = element_blank(), axis.ticks = element_blank(),
-              plot.margin = margin(t = 45, r = 5, b = 5, l = 5))
+              plot.margin = margin(t = if (draw_side) 10 else 45, r = 5, b = 5, l = 5))
 }
 
 # dynaSpec comparison of model (top) and focal bellbird (bottom), as one raw HTML block: one player
@@ -233,7 +238,7 @@ ds_pair <- function(pair, model_sp, model_title, wl = 512, collevels = seq(-50, 
     x <- ds_compare(ds_sound(1), ds_sound(2), flim = c(1, 8), gap = 0) +
         ds_static(width = 860, height = 330, res = 100,
                   alt = paste("Espectrograma:", gsub("<[^>]+>", " ", paste(titles, collapse = " y ")))) +  
-        ds_player(speeds = 1, buttons = character()) +
+        ds_player(speeds = 1, buttons = character(), autoplay = "next") +
         ds_theme(col.line = adjustcolor("orange", 0.6))   # playback line
     
     if (!is.null(bp[1]))
@@ -246,30 +251,11 @@ ds_pair <- function(pair, model_sp, model_title, wl = 512, collevels = seq(-50, 
     html <- as.character(save_dynaspec(x, play = FALSE, verbose = FALSE))
     html <- paste(gsub("```(\\{=html\\})?", "", html), collapse = "\n")
 
-    # the player script is the same for all pairs: it loads once, after the slides
-    # plus a script for the hidden step of each pair: pressing "next" on the slide first presses
-    # the player's play button (top sound, then bottom), and only the next press advances
-    step_js <- paste0(
-        "<script>(function () {",
-        "var ready = function () {",
-        "Reveal.on('fragmentshown', function (e) {",
-        "if (!e.fragment.classList.contains('ds-autoplay')) return;",
-        "var b = Array.prototype.slice.call(Reveal.getCurrentSlide().querySelectorAll('.dynaspec-compare .ds-play'))",
-        ".filter(function (x) { return x.offsetParent; })[0];",
-        "if (b) b.click();",
-        "});",
-        "Reveal.on('fragmenthidden', function (e) {",
-        "if (!e.fragment.classList.contains('ds-autoplay')) return;",
-        "Reveal.getCurrentSlide().querySelectorAll('audio').forEach(function (a) { a.pause(); });",
-        "});",
-        "};",
-        "var wait = function () {",
-        "if (window.Reveal && Reveal.on && Reveal.isReady && Reveal.isReady()) ready();",
-        "else setTimeout(wait, 100);",
-        "};",
-        "wait();",
-        "})();</script>")
-    writeLines(c(paste0("<script>", sub(".*<script>", "", html)), step_js), "dynaspec_player.html")
+    # the player script is the same for all pairs: it loads once, after the slides. It includes
+    # the playback with "next" of ds_player(autoplay = "next"): pressing "next" on the slide first
+    # plays the pair (top sound, then bottom), and only the next press advances. The hidden step
+    # that dynaSpec adds after the script is dropped: it is added below, after the layout of the pair
+    writeLines(sub("(?s).*<script>(.*?</script>).*", "<script>\\1", html, perl = TRUE), "dynaspec_player.html")
     player <- sub("<script>.*", "", html)
 
     # base64 data makes pandoc stall, so the player points to files that Quarto embeds at the end;
@@ -333,33 +319,50 @@ cat("\n```{=html}\n<style>:root {", paste0(names(css_vars), ": ", css_vars, ";",
 
 ## Evolución del aprendizaje vocal
 
-<div style="height: 0.5em;"></div>
+<div style="height: 0.25em;"></div>
 
+::: {.columns .filogenia-columnas}
+::: {.column width="62%"}
 ![](images/filogenia_ordenes_diapositiva.png){.filogenia}
+:::
+::: {.column width="38%"}
+:::
+:::
 
-<div style="height: 0.5em;"></div>
+<div style="height: 0.25em;"></div>
 
 ::: {.fuente}
-filogenia: Open Tree of Life v1.7 (McTavish et al. 2025; Suh et al. 2011) · aprendizaje vocal: Jarvis 2004
+filogenia: Open Tree of Life (McTavish et al. 2025; Suh et al. 2011)
 :::
 
 ## Evolución del aprendizaje vocal
 
-<div style="height: 0.5em;"></div>
+<div style="height: 0.25em;"></div>
 
+::: {.columns .filogenia-columnas}
+::: {.column width="62%"}
 ![](images/filogenia_ordenes_tyranni_diapositiva.png){.filogenia}
+:::
+::: {.column width="38%" .filogenia-puntos}
+- Género *Procnias*
+- Dialectos y evolución cultural en *P. tricarunculatus*
+- Aparente imitación en un individuo en cautiverio de *P. nudicollis*
+:::
+:::
 
-<div style="height: 0.5em;"></div>
+<div style="height: 0.25em;"></div>
 
 ::: {.fuente}
-filogenia: Open Tree of Life v1.7 (McTavish et al. 2025; Suh et al. 2011) · aprendizaje vocal: Jarvis 2004; Kroodsma et al. 2013
+
+Saranathan et al. 2007; Kroodsma et al. 2013
+
 :::
 
 ::: {.notes}
 **Unos 20 s.** En azul, los Tyranni o suboscines: el grupo hermano de las aves canoras, considerado no aprendiz. Ahí están los pájaros campana, y por eso su caso es tan interesante.
 :::
 
-## Aprendizaje en *Procnias*
+## Aprendizaje en *Procnias* {visibility="hidden"}
 
 <!-- close-up of the tree made by bird_orders_phylogeny.R (same colours as the two slides above) -->
 
@@ -689,13 +692,16 @@ for (sp in c("Ramphastos sulfuratus", "Ramphastos brevis", "Pteroglossus torquat
              "Pteroglossus erythropygius", "Psarocolius montezuma", "Psarocolius guatimozinus",
              "Procnias tricarunculatus")) {
     snake <- gsub(" ", "_", tolower(sp))
+    bb <- sp == "Procnias tricarunculatus"
     ex <- dynaspec(file.path("images", paste0("ejemplo_", snake, ".wav")), flim = c(0, 10)) +
         ds_spectrogram(wl = 512, ovlp = ovlp) +
         # all examples share the frequency (0-10 kHz) and time (0.8 s) ranges, so only the
         # bellbird one shows the axes
-        ds_theme(axis.type = if (sp == "Procnias tricarunculatus") "inside" else "none",
-                 pal = spectro_pal) +
-        ds_static(width = 360, height = 450, res = 150)
+        # (standard axes: with "inside" the frequency labels are black on the dark spectrogram)
+        (if (bb) ds_theme(axis.type = "standard", xlab = "Tiempo (s)", ylab = "kHz", pal = spectro_pal)
+         else ds_theme(axis.type = "none", pal = spectro_pal)) +
+        (if (bb) ds_static(width = 470, height = 540, res = 150)
+         else ds_static(width = 360, height = 450, res = 150))
     invisible(save_dynaspec(ex, file.path("images", paste0("espectro_", snake, ".png")),
                             play = FALSE, verbose = FALSE))
 }
@@ -907,7 +913,12 @@ g_classify <- list(
     annotate("rect", xmin = cat_x - cat_w / 2, xmax = cat_x + cat_w / 2, ymin = cat_y - cat_w / 2,
              ymax = cat_y + cat_w / 2, fill = NA, colour = grey_box, linewidth = 0.6),
     annotate("text", x = cat_x, y = cat_y, label = "?", size = 50, fontface = "bold",
-             family = font_family, colour = deck_cols[["titulo"]], alpha = 0.85)
+             family = font_family, colour = "white", alpha = 0.7),  # light, to stand out on the dark spectrograms
+    # sample of the focal bellbird (data/processed/pooled_annotations.csv, source mimetic_bellbird,
+    # and data/raw/Recording_dates_.csv): sampling days, recordings and annotated songs
+    annotate("text", x = cat_x, y = cat_y - cat_w / 2 - 1.5, vjust = 1, size = 4.8, lineheight = 0.95,
+             label = "15 días de muestreo\n166 grabaciones\n1 660 cantos",
+             family = font_family, colour = deck_cols[["texto"]])
 )
 frame_ <- list(
     coord_fixed(xlim = c(-3.5, 141.9), ylim = c(-6.5, 76.5), expand = FALSE, clip = "off"),
@@ -952,12 +963,22 @@ cat("\n::: {.r-stack}\n", paste(img_md, collapse = "\n\n"), "\n:::\n", sep = "")
 ## Discriminar simpátricas + alopátricas {.desempeno .titulo-pequeno}
 
 ```{r}
-#| fig-width: 6.6
+#| fig-width: 9
 #| fig-height: 6.3
 order7 <- c("Ramphastos sulfuratus", "Ramphastos brevis", "Pteroglossus torquatus",
             "Pteroglossus erythropygius", "Psarocolius montezuma", "Psarocolius guatimozinus",
             "Procnias tricarunculatus")
-plot_conf("./data/confusion_sympatric_allopatric.csv", order7, text_size = 6.2)
+# grey box around the two rows of each pair of sister species (labels included), as the pair
+# boxes of the training diagram, with the name of each group on the right
+pair_y <- c(6.5, 4.5, 2.5)   # rows 7-6, 5-4 and 3-2 (first species at the top)
+pair_lab <- c("Tucanes", "Aracaris", "Oropéndolas")
+conf_box_x <- (-4 + 7.62) / 2; conf_box_w <- 7.62 + 4   # from left of the labels to the last column
+plot_conf("./data/confusion_sympatric_allopatric.csv", order7, text_size = 6.2, draw_side = TRUE) +
+    lapply(pair_y, function(y) box(conf_box_x, y, conf_box_w, 1.9, NA, grey_box, lwd = 2)) +
+    annotate("text", x = 8, y = pair_y, label = pair_lab, hjust = 0, size = 6.2,
+             family = font_family, colour = deck_cols[["texto"]]) +
+    theme(plot.margin = margin(t = 10, r = 140, b = 5, l = 5),
+          axis.title.y = element_text(margin = margin(r = 28)))   # clear of the pair boxes
 ```
 
 ::: {.fuente}
@@ -1038,12 +1059,14 @@ bias_plot(show_other = FALSE)
 <!-- same text as on the next slide, hidden, so that both plots have the same size -->
 ::: {.oculto}
 <div class="nota-gris">
-<center><span class="texto-medio">Focal: **93 %** <span class="simp">simpátricas</span> (~14 veces más que <span class="alop">alopátricas</span>)</br>Otros campanas: solo 3 de 177 heteroespecíficas, todas <span class="alop">alopátricas</span></span></center>
+<center><span class="texto-medio">Focal: **93 %** <span class="simp">simpátricas</span> (~14 veces más que <span class="alop">alopátricas</span>)</span></center>
 </div>
 :::
 
 ::: {.notes}
 **Hasta 7:00.** El resultado principal, primero en el individuo focal: la gran mayoría de sus clasificaciones heteroespecíficas caen en la especie simpátrica, sobre todo el tucán pico iris y el aracari de collar.
+
+Otros campanas: solo 3 de 177 heteroespecíficas, todas alopátricas
 :::
 
 ## Semejanza a simpátricas vs alopátricas {.titulo-pequeno}
@@ -1065,10 +1088,12 @@ bias_plot(show_other = TRUE)
 
 ```{r}
 #| fig-width: 5.6
-#| fig-height: 6
+#| fig-height: 5
+# (figure only as tall as the matrix: the image is stretched to the slide height, so less blank
+# space means a larger matrix)
 order4 <- c("Ramphastos sulfuratus", "Pteroglossus torquatus", "Psarocolius montezuma",
             "Procnias tricarunculatus")
-plot_conf("./data/confusion_sympatric.csv", order4, text_size = 6.5, draw_w = 1.4, draw_h = 1.15)
+plot_conf("./data/confusion_sympatric.csv", order4, text_size = 6.5, draw_w = 1.4, draw_h = 1.15, draw_side = TRUE)
 ```
 
 
@@ -1109,7 +1134,7 @@ ggplot(sp_bars, aes(x = species, y = prop, fill = bird)) +
 ```
 
 ::: {.fuente}
-Otros campanas: grabaciones de prueba (no usadas para entrenar); ninguna clasificada como especie modelo
+Otros campanas: grabaciones de prueba (no usadas para entrenar)
 :::
 
 ::: {.notes}
@@ -1370,7 +1395,6 @@ ds_pair("bock", "Procnias tricarunculatus", "<i>Procnias tricarunculatus</i><br>
 
 <div class="recursos recursos-enlaces">
 <span></span><p><b>Sitio del proyecto</b>: análisis, código y esta presentación<br><a href="https://marce10.github.io/bellbird_vocal_mimicry/">marce10.github.io/bellbird_vocal_mimicry</a></p>
-<span></span><p><b>Repositorio en GitHub</b><br><a href="https://github.com/maRce10/bellbird_vocal_mimicry">github.com/maRce10/bellbird_vocal_mimicry</a></p>
 <img class="logo-recurso" src="images/logo_suwo_web.png" alt="suwo"><p><b>suwo</b>: grabaciones de repositorios en línea desde R<br><a href="https://docs.ropensci.org/suwo/">docs.ropensci.org/suwo</a></p>
 <img class="logo-recurso" src="images/logo_birdnet_web.png" alt="BirdNET"><p><b>BirdNET</b>: identificación de aves por sonido con aprendizaje profundo<br><a href="https://birdnet.cornell.edu/">birdnet.cornell.edu</a></p>
 <img class="logo-recurso" src="images/logo_dynaSpec_web.png" alt="dynaSpec"><p><b>dynaSpec</b>: los espectrogramas con sonido de esta presentación<br><a href="https://marce10.github.io/dynaSpec/">marce10.github.io/dynaSpec</a></p>
@@ -1379,7 +1403,7 @@ ds_pair("bock", "Procnias tricarunculatus", "<i>Procnias tricarunculatus</i><br>
 <div class="recursos recursos-enlaces">
 </div>
 <div class="recursos">
-<span></span><div class="ref-enlace"><a href="#/referencias">Referencias citadas</a></div>
+<span></span><div class="ref-enlace"><a href="#/referencias">Referencias</a></div>
 </div>
 
 :::

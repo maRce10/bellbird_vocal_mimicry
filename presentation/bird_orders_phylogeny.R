@@ -156,7 +156,7 @@ icons <- c(
   Passeri = "images/icono_passeri.png",
   Psittaciformes = "images/icono_psitacidae.png",
   Trochilidae = "images/icono_trochilidae.png",
-  Tyranni = "images/icono_procnias_tricarunculatus.png"
+  Tyranni = "images/icono_procnias.png"
 )
 icon_size <- 5.5 # width or height of the largest side, in tree units
 icon_gap <- 0.4 # distance between the tip and the illustration
@@ -175,36 +175,44 @@ icon_boxes <- list() # extent of each illustration, for the close-up figure
 # one illustration as a layer; gray = TRUE draws it in black and white, and alpha (0-1) is
 # its opacity
 icon_layer <- function(g, gray = FALSE, alpha = 1) {
-    img <- png::readPNG(icons[[g]])
-    if (dim(img)[3] == 4) img[,, 4] <- img[,, 4] * alpha
-    if (gray) {
-      lum <- 0.299 * img[,, 1] + 0.587 * img[,, 2] + 0.114 * img[,, 3]
-      for (k in 1:3) img[,, k] <- lum
+  img <- png::readPNG(icons[[g]])
+  if (dim(img)[3] == 4) {
+    img[,, 4] <- img[,, 4] * alpha
+  }
+  if (gray) {
+    lum <- 0.299 * img[,, 1] + 0.587 * img[,, 2] + 0.114 * img[,, 3]
+    for (k in 1:3) {
+      img[,, k] <- lum
     }
-    if (xor(g %in% icon_flip, mirror)) {
-      img <- img[, rev(seq_len(dim(img)[2])), , drop = FALSE]
-    }
-    asp <- dim(img)[1] / dim(img)[2]
-    size <- icon_size * (if (is.null(icon_scale[[g]])) 1 else icon_scale[[g]])
-    w <- if (asp < 1) size else size / asp
-    h <- w * asp
-    tip <- which(tr$tip.label == g)
-    shift <- if (is.null(icon_shift[[g]])) c(0, 0) else icon_shift[[g]]
-    pos <- y[tip] + shift[1]
-    # centre far enough out that the closest corner of the image clears the tip
-    th <- angle(pos)
-    half <- abs(cos(th)) * w / 2 + abs(sin(th)) * h / 2
-    c0 <- to_xy(x[tip] + icon_gap + half + shift[2], pos)
-    icon_boxes[[g]] <<- c(xmin = c0$px - w / 2, xmax = c0$px + w / 2,
-                          ymin = c0$py - h / 2, ymax = c0$py + h / 2)
-    annotation_raster(
-      img,
-      xmin = c0$px - w / 2,
-      xmax = c0$px + w / 2,
-      ymin = c0$py - h / 2,
-      ymax = c0$py + h / 2,
-      interpolate = TRUE
-    )
+  }
+  if (xor(g %in% icon_flip, mirror)) {
+    img <- img[, rev(seq_len(dim(img)[2])), , drop = FALSE]
+  }
+  asp <- dim(img)[1] / dim(img)[2]
+  size <- icon_size * (if (is.null(icon_scale[[g]])) 1 else icon_scale[[g]])
+  w <- if (asp < 1) size else size / asp
+  h <- w * asp
+  tip <- which(tr$tip.label == g)
+  shift <- if (is.null(icon_shift[[g]])) c(0, 0) else icon_shift[[g]]
+  pos <- y[tip] + shift[1]
+  # centre far enough out that the closest corner of the image clears the tip
+  th <- angle(pos)
+  half <- abs(cos(th)) * w / 2 + abs(sin(th)) * h / 2
+  c0 <- to_xy(x[tip] + icon_gap + half + shift[2], pos)
+  icon_boxes[[g]] <<- c(
+    xmin = c0$px - w / 2,
+    xmax = c0$px + w / 2,
+    ymin = c0$py - h / 2,
+    ymax = c0$py + h / 2
+  )
+  annotation_raster(
+    img,
+    xmin = c0$px - w / 2,
+    xmax = c0$px + w / 2,
+    ymin = c0$py - h / 2,
+    ymax = c0$py + h / 2,
+    interpolate = TRUE
+  )
 }
 icon_layers <- setNames(lapply(names(icons), icon_layer), names(icons))
 
@@ -227,8 +235,13 @@ lim <- h_root + inner + icon_gap + icon_size * max(1, unlist(icon_scale)) + 0.3
 # gray_icons: groups whose illustration is drawn in black and white, with opacity gray_alpha
 gray_alpha <- 0.6 # opacity of the black-and-white illustrations (1 = opaque)
 
-plot_tree <- function(show_icons = TRUE, show_tyranni = FALSE, gray_icons = character(),
-                      gray_alpha = 1, lw_scale = 1) {
+plot_tree <- function(
+  show_icons = TRUE,
+  show_tyranni = FALSE,
+  gray_icons = character(),
+  gray_alpha = 1,
+  lw_scale = 1
+) {
   # lw_scale multiplies line widths and dot sizes (for zoomed-in versions)
   plain <- !paths$hl & !(show_tyranni & paths$hl2)
   g <- ggplot() +
@@ -248,7 +261,12 @@ plot_tree <- function(show_icons = TRUE, show_tyranni = FALSE, gray_icons = char
       lineend = "round",
       linejoin = "round"
     ) +
-    geom_point(data = learner_tips, aes(px, py), colour = hl_col, size = 4.2 * lw_scale)
+    geom_point(
+      data = learner_tips,
+      aes(px, py),
+      colour = hl_col,
+      size = 4.2 * lw_scale
+    )
   if (show_tyranni) {
     g <- g +
       geom_path(
@@ -259,11 +277,23 @@ plot_tree <- function(show_icons = TRUE, show_tyranni = FALSE, gray_icons = char
         lineend = "round",
         linejoin = "round"
       ) +
-      geom_point(data = tyranni_tip, aes(px, py), colour = hl2_col, size = 4.2 * lw_scale)
+      geom_point(
+        data = tyranni_tip,
+        aes(px, py),
+        colour = hl2_col,
+        size = 4.2 * lw_scale
+      )
   }
   if (show_icons) {
     shown <- if (show_tyranni) names(icons) else highlight
-    g <- g + lapply(shown, function(i) if (i %in% gray_icons) icon_layer(i, gray = TRUE, alpha = gray_alpha) else icon_layers[[i]])
+    g <- g +
+      lapply(shown, function(i) {
+        if (i %in% gray_icons) {
+          icon_layer(i, gray = TRUE, alpha = gray_alpha)
+        } else {
+          icon_layers[[i]]
+        }
+      })
   }
   g +
     coord_fixed(xlim = c(-lim, lim), ylim = c(-lim, lim), expand = FALSE) +
@@ -308,7 +338,11 @@ for (v in names(slide_png)) {
       TRUE,
       show_tyranni = v == "tyranni",
       # in the Tyranni version every illustration but the bellbird is in black and white
-      gray_icons = if (v == "tyranni") setdiff(names(icons), "Tyranni") else character(),
+      gray_icons = if (v == "tyranni") {
+        setdiff(names(icons), "Tyranni")
+      } else {
+        character()
+      },
       gray_alpha = gray_alpha
     ) +
       theme(plot.background = element_rect(fill = NA, colour = NA)),
@@ -342,16 +376,24 @@ zoom_depth <- 6
 zoom_margin <- 1.5
 zoom_groups <- c("Passeri", "Psittaciformes", "Tyranni")
 zb <- do.call(rbind, icon_boxes[zoom_groups])
-zoom_x <- c(min(h_root + inner - zoom_depth, min(zb[, "xmin"])), max(zb[, "xmax"]) + 0.3)
+zoom_x <- c(
+  min(h_root + inner - zoom_depth, min(zb[, "xmin"])),
+  max(zb[, "xmax"]) + 0.3
+)
 zoom_y <- c(min(zb[, "ymin"]) - zoom_margin, max(zb[, "ymax"]) + zoom_margin)
 zoom_gray <- c("Passeri", "Psittaciformes") # illustrations in black and white in the close-up
 zoom_gray_alpha <- gray_alpha # their opacity (same as in the Tyranni phylogeny)
 zoom_h <- 8 # height of the image (inches); the width follows the shape of the close-up
 ggsave(
   "images/filogenia_ordenes_detalle.png",
-  plot_tree(TRUE, show_tyranni = TRUE, gray_icons = zoom_gray, gray_alpha = zoom_gray_alpha,
-            # thicker lines in proportion to the zoom, so branches keep their look
-            lw_scale = 2 * lim / diff(zoom_y)) +
+  plot_tree(
+    TRUE,
+    show_tyranni = TRUE,
+    gray_icons = zoom_gray,
+    gray_alpha = zoom_gray_alpha,
+    # thicker lines in proportion to the zoom, so branches keep their look
+    lw_scale = 2 * lim / diff(zoom_y)
+  ) +
     coord_fixed(xlim = zoom_x, ylim = zoom_y, expand = FALSE) +
     theme(plot.background = element_rect(fill = NA, colour = NA)),
   width = zoom_h * diff(zoom_x) / diff(zoom_y),
