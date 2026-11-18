@@ -976,7 +976,7 @@ g_classify <- list(
     # sample of the focal bellbird (data/processed/pooled_annotations.csv, source mimetic_bellbird,
     # and data/raw/Recording_dates_.csv): sampling days, recordings and annotated songs
     annotate("text", x = cat_x, y = cat_y - cat_w / 2 - 1.5, vjust = 1, size = 4.8, lineheight = 0.95,
-             label = "15 días de muestreo\n166 grabaciones\n1 660 cantos",
+             label = "15 días de muestreo /\n8 meses\n166 grabaciones\n1 660 cantos",
              family = font_family, colour = deck_cols[["texto"]])
 )
 frame_ <- list(
