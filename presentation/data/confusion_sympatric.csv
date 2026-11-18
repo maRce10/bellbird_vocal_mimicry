@@ -1,15 +1,15 @@
 "reference","predicted","Freq","proportion"
 "Procnias tricarunculatus","Procnias tricarunculatus",136,1
 "Psarocolius montezuma","Procnias tricarunculatus",2,0.03125
-"Pteroglossus torquatus","Procnias tricarunculatus",1,0.0188679245283019
+"Pteroglossus torquatus","Procnias tricarunculatus",1,0.0192307692307692
 "Ramphastos sulfuratus","Procnias tricarunculatus",16,0.0536912751677852
 "Procnias tricarunculatus","Psarocolius montezuma",0,0
 "Psarocolius montezuma","Psarocolius montezuma",61,0.953125
-"Pteroglossus torquatus","Psarocolius montezuma",4,0.0754716981132075
+"Pteroglossus torquatus","Psarocolius montezuma",3,0.0576923076923077
 "Ramphastos sulfuratus","Psarocolius montezuma",1,0.00335570469798658
 "Procnias tricarunculatus","Pteroglossus torquatus",0,0
 "Psarocolius montezuma","Pteroglossus torquatus",1,0.015625
-"Pteroglossus torquatus","Pteroglossus torquatus",48,0.905660377358491
+"Pteroglossus torquatus","Pteroglossus torquatus",48,0.923076923076923
 "Ramphastos sulfuratus","Pteroglossus torquatus",0,0
 "Procnias tricarunculatus","Ramphastos sulfuratus",0,0
 "Psarocolius montezuma","Ramphastos sulfuratus",0,0

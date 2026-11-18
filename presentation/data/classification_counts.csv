@@ -1,18 +1,18 @@
 "pred","Freq","model","bird","total"
-"nocall",2266,"sympatric_allopatric","focal",3394
-"Procnias tricarunculatus",572,"sympatric_allopatric","focal",3394
-"Psarocolius montezuma",7,"sympatric_allopatric","focal",3394
-"Pteroglossus erythropygius",29,"sympatric_allopatric","focal",3394
-"Pteroglossus torquatus",123,"sympatric_allopatric","focal",3394
-"Ramphastos brevis",9,"sympatric_allopatric","focal",3394
-"Ramphastos sulfuratus",388,"sympatric_allopatric","focal",3394
-"nocall",42,"sympatric_allopatric","other",177
-"Procnias tricarunculatus",132,"sympatric_allopatric","other",177
-"Ramphastos brevis",3,"sympatric_allopatric","other",177
-"nocall",969,"sympatric","focal",2445
-"Procnias tricarunculatus",632,"sympatric","focal",2445
-"Psarocolius montezuma",48,"sympatric","focal",2445
-"Pteroglossus torquatus",216,"sympatric","focal",2445
-"Ramphastos sulfuratus",580,"sympatric","focal",2445
-"nocall",9,"sympatric","other",145
-"Procnias tricarunculatus",136,"sympatric","other",145
+"nocall",537,"sympatric_allopatric","focal",1660
+"Procnias tricarunculatus",571,"sympatric_allopatric","focal",1660
+"Psarocolius montezuma",6,"sympatric_allopatric","focal",1660
+"Pteroglossus erythropygius",28,"sympatric_allopatric","focal",1660
+"Pteroglossus torquatus",122,"sympatric_allopatric","focal",1660
+"Ramphastos brevis",9,"sympatric_allopatric","focal",1660
+"Ramphastos sulfuratus",387,"sympatric_allopatric","focal",1660
+"nocall",4,"sympatric_allopatric","other",137
+"Procnias tricarunculatus",132,"sympatric_allopatric","other",137
+"Ramphastos brevis",1,"sympatric_allopatric","other",137
+"nocall",201,"sympatric","focal",1660
+"Procnias tricarunculatus",632,"sympatric","focal",1660
+"Psarocolius montezuma",33,"sympatric","focal",1660
+"Pteroglossus torquatus",214,"sympatric","focal",1660
+"Ramphastos sulfuratus",580,"sympatric","focal",1660
+"nocall",1,"sympatric","other",137
+"Procnias tricarunculatus",136,"sympatric","other",137

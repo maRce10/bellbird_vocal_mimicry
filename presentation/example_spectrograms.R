@@ -29,6 +29,21 @@ best <- do.call(rbind, lapply(species, function(sp) {
   snr <- vapply(f, clip_snr, numeric(1))
   data.frame(species = sp, file = f[which.max(snr)], snr = round(max(snr, na.rm = TRUE), 1))
 }))
+# sister species: instead of the best-SNR clips, a pair of similar calls per genus, chosen by eye
+# among the pairs with the highest spectrogram cross-correlation (40 best-SNR clips of each
+# species; r = 0.81 toucans, 0.70 aracaris, 0.56 oropendolas)
+chosen <- c("Ramphastos sulfuratus" = "train_data/Ramphastos sulfuratus/Ramphastos-sulfuratus-137713.wav_4.wav",
+            "Ramphastos brevis" = "train_data/Ramphastos brevis/Ramphastos_brevis-XC160943.wav_7.wav",
+            "Pteroglossus torquatus" = "train_data/Pteroglossus torquatus/Pteroglossus_torquatus-GBIF2848586535.wav_18.wav",
+            "Pteroglossus erythropygius" = "train_data/Pteroglossus erythropygius/Pteroglossus_erythropygius-ML652475963.wav_21.wav",
+            "Psarocolius montezuma" = "train_data/Psarocolius montezuma/Psarocolius_montezuma-GBIF2609668344.wav_18.wav",
+            "Psarocolius guatimozinus" = "train_data/Psarocolius guatimozinus/Psarocolius_guatimozinus-ML625166509.wav_7.wav")
+for (sp in names(chosen)) {
+  f <- file.path(clips_dir, chosen[[sp]])
+  if (!file.exists(f)) f <- sub("train_data", "test_data", f)
+  stopifnot(file.exists(f))
+  best[best$species == sp, c("file", "snr")] <- list(f, round(clip_snr(f), 1))
+}
 write.csv(best, "data/espectrogramas_ejemplo.csv", row.names = FALSE)
 
 # 0.8 s window centred on the clip (padded with silence when the clip is shorter)

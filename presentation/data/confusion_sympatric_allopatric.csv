@@ -1,5 +1,5 @@
 "reference","predicted","Freq","proportion"
-"Procnias tricarunculatus","Procnias tricarunculatus",132,0.977777777777778
+"Procnias tricarunculatus","Procnias tricarunculatus",132,0.992481203007519
 "Psarocolius guatimozinus","Procnias tricarunculatus",0,0
 "Psarocolius montezuma","Procnias tricarunculatus",0,0
 "Pteroglossus erythropygius","Procnias tricarunculatus",1,0.00523560209424084
@@ -8,14 +8,14 @@
 "Ramphastos sulfuratus","Procnias tricarunculatus",11,0.047008547008547
 "Procnias tricarunculatus","Psarocolius guatimozinus",0,0
 "Psarocolius guatimozinus","Psarocolius guatimozinus",40,1
-"Psarocolius montezuma","Psarocolius guatimozinus",7,0.137254901960784
+"Psarocolius montezuma","Psarocolius guatimozinus",6,0.12
 "Pteroglossus erythropygius","Psarocolius guatimozinus",0,0
 "Pteroglossus torquatus","Psarocolius guatimozinus",0,0
 "Ramphastos brevis","Psarocolius guatimozinus",0,0
 "Ramphastos sulfuratus","Psarocolius guatimozinus",0,0
 "Procnias tricarunculatus","Psarocolius montezuma",0,0
 "Psarocolius guatimozinus","Psarocolius montezuma",0,0
-"Psarocolius montezuma","Psarocolius montezuma",44,0.862745098039216
+"Psarocolius montezuma","Psarocolius montezuma",44,0.88
 "Pteroglossus erythropygius","Psarocolius montezuma",0,0
 "Pteroglossus torquatus","Psarocolius montezuma",0,0
 "Ramphastos brevis","Psarocolius montezuma",0,0
@@ -34,7 +34,7 @@
 "Pteroglossus torquatus","Pteroglossus torquatus",22,0.578947368421053
 "Ramphastos brevis","Pteroglossus torquatus",0,0
 "Ramphastos sulfuratus","Pteroglossus torquatus",0,0
-"Procnias tricarunculatus","Ramphastos brevis",3,0.0222222222222222
+"Procnias tricarunculatus","Ramphastos brevis",1,0.0075187969924812
 "Psarocolius guatimozinus","Ramphastos brevis",0,0
 "Psarocolius montezuma","Ramphastos brevis",0,0
 "Pteroglossus erythropygius","Ramphastos brevis",0,0

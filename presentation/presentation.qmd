@@ -220,8 +220,8 @@ ds_pair <- function(pair, model_sp, model_title, wl = 512, collevels = seq(-50, 
     wl <- rep(wl, length.out = 2)
     clips <- paste0("clip_", pair, c("_focal", "_model"))
     titles <- c("<i>Procnias tricarunculatus</i><br>focal", model_title)
-    drawings <- sp_file(c("Procnias tricarunculatus", model_sp)[1])
-    drawings <- c(drawings, sp_file(model_sp))
+    # focal bellbird: the same drawing as in the training diagram (flipped by .dibujos-volteados)
+    drawings <- c("images/campana_focal_dibujo.png", sp_file(model_sp))
     # model on top and focal bellbird below: reverse the order (wl stays focal first)
     clips <- rev(clips); titles <- rev(titles); drawings <- rev(drawings); wl <- rev(wl)
 
@@ -260,6 +260,10 @@ ds_pair <- function(pair, model_sp, model_title, wl = 512, collevels = seq(-50, 
 
     # base64 data makes pandoc stall, so the player points to files that Quarto embeds at the end;
     # each sound also gets its drawing and name, in a column to the left of the plot
+    # the label (drawing and name) sits on the base of each spectrogram: data-rows gives the plot
+    # region as fractions of the image height from the top (5th and 6th values)
+    rows <- regmatches(player, gregexpr('data-rows="[^"]+"', player))[[1]]
+    lab_bottom <- sapply(strsplit(gsub('data-rows="|"', "", rows), ","), function(r) (1 - as.numeric(r[6])) * 100)
     for (i in 1:2) {
         png_file <- file.path("images", paste0("ds_", clips[i], ".png"))
         png_b64 <- sub('(?s).*?srcset="data:image/png;base64,([^ "]+)[^"]*".*', "\\1", player, perl = TRUE)
@@ -268,7 +272,7 @@ ds_pair <- function(pair, model_sp, model_title, wl = 512, collevels = seq(-50, 
         player <- sub(
             '<audio([^>]*) src="data:audio/[^"]+"></audio>',
             paste0('<audio\\1 src="images/', clips[i], '.wav"></audio>',
-                   '<div class="ds-etiqueta"><img class="ds-dibujo" src="', drawings[i],
+                   '<div class="ds-etiqueta" style="bottom: ', sprintf("%.2f", lab_bottom[i]), '%"><img class="ds-dibujo" src="', drawings[i],
                    '" alt=""><span>', titles[i], '</span></div>'),
             player
         )
@@ -332,7 +336,7 @@ cat("\n```{=html}\n<style>:root {", paste0(names(css_vars), ": ", css_vars, ";",
 <div style="height: 0.25em;"></div>
 
 ::: {.fuente}
-filogenia: Open Tree of Life (McTavish et al. 2025; Suh et al. 2011)
+filogenia: Open Tree of Life (McTavish et al. 2025)
 :::
 
 ## Evolución del aprendizaje vocal
@@ -568,7 +572,20 @@ ds_pair("aracari", "Pteroglossus torquatus", "<i>Pteroglossus torquatus</i>", wl
 ```
 
 ::: {.notes}
-**Hasta 5:10.** Al avanzar (→) suenan los dos en secuencia: focal y aracari de collar. También hubo sonidos parecidos a la oropéndola (en respaldo). Suena convincente, pero el oído puede engañar: necesitamos una prueba.
+**Hasta 5:10.** Al avanzar (→) suenan los dos en secuencia: focal y aracari de collar.
+:::
+
+## Aparentes imitaciones {.dibujos-volteados}
+
+<div style="height: 0.5em;"></div>
+
+```{r}
+#| output: asis
+ds_pair("oropendola_birdnet", "Psarocolius montezuma", "<i>Psarocolius montezuma</i>", wl = 1024, collevels = seq(-45, 0, 1))
+```
+
+::: {.notes}
+Al avanzar (→) suenan los dos en secuencia: focal y oropéndola de Moctezuma. Este sonido del juvenil (grabación INVEST_0093) fue clasificado como oropéndola por ambos modelos de BirdNET. Suena convincente, pero el oído puede engañar: necesitamos una prueba.
 :::
 
 ## Flujo de análisis {visibility="hidden"}
@@ -610,13 +627,9 @@ ds_pair("aracari", "Pteroglossus torquatus", "<i>Pteroglossus torquatus</i>", wl
 
 ## Semejanza vocal {.nostretch}
 
+<!-- first mimicry and its prediction, then chance and its prediction (each prediction with an
+arrow from its hypothesis box, on click) -->
 :::: {.columns}
-
-::: {.column width="50%"}
-::: {.callout-note icon=false appearance="simple"}
-<span class="texto-medio"><b>Azar:</b> vocalizaciones variables que solo coinciden por casualidad con otras especies</span>
-:::
-:::
 
 ::: {.column width="50%"}
 ::: {.callout-note icon=false appearance="simple"}
@@ -624,41 +637,78 @@ ds_pair("aracari", "Pteroglossus torquatus", "<i>Pteroglossus torquatus</i>", wl
 :::
 :::
 
+::: {.column width="50%"}
+::: {.fragment fragment-index=2}
+::: {.callout-note icon=false appearance="simple"}
+<span class="texto-medio"><b>Azar:</b> vocalizaciones variables que solo coinciden por casualidad con otras especies</span>
+:::
+:::
+:::
+
 ::::
 
-::: {.fragment}
-<!-- arrows from each hypothesis box down to its prediction; arrows and predictions appear on click -->
-<div class="flechas-prediccion"><svg viewBox="0 0 40 60" aria-hidden="true"><path d="M20 2 V48 M6 36 L20 52 L34 36" /></svg><svg viewBox="0 0 40 60" aria-hidden="true"><path d="M20 2 V48 M6 36 L20 52 L34 36" /></svg></div>
+```{r}
+# schematic predictions (hypothetical values) for one pair of sister toucan species: the
+# sympatric Ramphastos sulfuratus (first) and the allopatric R. brevis.
+# One plot per hypothesis, so that each appears on its own click; the y title is drawn in both
+# (transparent in the second) so that both panels have the same size
+pred <- expand.grid(sp = 1:2, hyp = c("azar", "mimetismo"))
+pred$type <- rep(c("Simpátrica", "Alopátrica"), length.out = nrow(pred))
+pred$x <- pred$sp
+pred$value <- c(0.29, 0.30,                         # chance
+                0.44, 0.06)                         # mimicry
+
+pred_plot <- function(h, show_y = TRUE) {
+    ggplot(pred[pred$hyp == h, ], aes(x = x, y = value, fill = type)) +
+        geom_col(width = 0.8) +
+        # drawing of each species above its bar
+        lapply(1:2, function(i) sp_above(c("Ramphastos sulfuratus", "Ramphastos brevis")[i], i,
+                                         pred$value[pred$hyp == h][i], 0.15, 2.4, 1.6)) +
+        # pair name under the species labels (outside the panel)
+        annotate("text", x = 1.5, y = -0.2, label = "Especies hermanas", size = 6,
+                 family = font_family, vjust = 1) +
+        scale_fill_manual(values = type_cols, guide = "none") +
+        scale_x_continuous(breaks = 1:2, labels = c("R. sulfuratus", "R. brevis")) +
+        scale_y_continuous(expand = expansion(mult = c(0, 0.1))) +
+        coord_cartesian(ylim = c(0, max(pred$value) * 1.4), clip = "off") +
+        labs(x = NULL, y = "Similitud de\ncantos del campana") +
+        theme(axis.text.x = element_text(size = 20, face = "italic",
+                                         colour = type_cols[c("Simpátrica", "Alopátrica")]),
+              axis.text.y = element_blank(), axis.ticks.y = element_blank(),
+              axis.title.y = element_text(colour = if (show_y) "black" else "transparent",
+                                          lineheight = 0.9, size = rel(0.8)),
+              plot.margin = margin(t = 15, r = 10, b = 45, l = 5))
+}
+arrow_svg <- '<div class="flecha-prediccion"><svg viewBox="0 0 40 60" aria-hidden="true"><path d="M20 2 V48 M6 36 L20 52 L34 36" /></svg></div>'
+```
+
+::: {.prediccion-fila}
+::: {.fragment fragment-index=1}
+`r arrow_svg`
 
 ```{r}
-#| fig-height: 3.5
+#| fig-width: 5
+#| fig-height: 3
 #| out-width: "100%"
-# schematic predictions (hypothetical values) for two generic pairs of sister species: species
-# 1 and 2 are the first pair, 3 and 4 the second; in each pair one is allopatric, one sympatric
-pred <- expand.grid(sp = 1:4, hyp = c("azar", "mimetismo"))
-pred$type <- rep(c("Alopátrica", "Simpátrica"), length.out = nrow(pred))
-pred$x <- pred$sp + ifelse(pred$sp > 2, 0.4, 0)    # a gap between the two pairs
-pred$value <- c(0.30, 0.29, 0.24, 0.25,             # chance
-                0.06, 0.44, 0.05, 0.33)             # mimicry
-pairs <- data.frame(x = c(1.5, 3.9), label = c("Especies\nhermanas 1", "Especies\nhermanas 2"))
-
-ggplot(pred, aes(x = x, y = value, fill = type)) +
-    geom_col(width = 0.95) +
-    # pair names under the species labels (outside the panel)
-    geom_text(data = pairs, aes(x = x, y = -0.155, label = label), inherit.aes = FALSE,
-              size = 6, family = font_family, vjust = 1, lineheight = 0.9) +
-    facet_wrap(~ hyp) +
-    scale_fill_manual(values = type_cols, name = "") +
-    scale_x_continuous(breaks = unique(pred$x), labels = paste("Sp", c("A", "B", "X", "Y"))) +
-    scale_y_continuous(expand = expansion(mult = c(0, 0.1))) +
-    coord_cartesian(ylim = c(0, NA), clip = "off") +
-    labs(x = NULL, y = "Similitud") +
-    theme(legend.position = "bottom", legend.box.spacing = grid::unit(70, "pt"),
-          legend.text = element_text(size = rel(0.8 * 1.3)),   # 1.3 times the default legend text
-          strip.background = element_blank(), strip.text = element_blank(),
-          axis.text.x = element_text(size = 20), axis.text.y = element_blank(),
-          axis.ticks.y = element_blank(), panel.spacing = grid::unit(2, "lines"))
+pred_plot("mimetismo")
 ```
+:::
+
+::: {.fragment fragment-index=3}
+`r arrow_svg`
+
+```{r}
+#| fig-width: 5
+#| fig-height: 3
+#| out-width: "100%"
+pred_plot("azar", show_y = FALSE)
+```
+:::
+:::
+
+<!-- colour key, with the first prediction -->
+::: {.fragment fragment-index=1}
+<div class="leyenda-tipos"><span><i style="background: var(--col-simp)"></i>Simpátrica</span><span><i style="background: var(--col-alop)"></i>Alopátrica</span></div>
 :::
 
 
@@ -667,7 +717,7 @@ Kelley et al. 2008; Dalziell et al. 2015
 :::
 
 ::: {.notes}
-**Unos 40 s.** Queremos distinguir dos posibilidades. Si el juvenil produce vocalizaciones variables que por casualidad se parecen a otras especies, el clasificador debería asignarlas por igual a las simpátricas y a sus parientes alopátricos (izquierda). Si las está copiando, deberían parecerse más a las simpátricas, que son las que puede escuchar (derecha). Las alopátricas son un buen control porque, al ser especies hermanas, suenan parecido a los modelos: cualquier parecido por azar debería repartirse entre ambas. Las barras son esquemáticas.
+**Unos 40 s.** Queremos distinguir dos posibilidades. Si el juvenil está copiando, sus vocalizaciones deberían parecerse más a las simpátricas, que son las que puede escuchar (izquierda). Si produce vocalizaciones variables que por casualidad se parecen a otras especies, el clasificador debería asignarlas por igual a las simpátricas y a sus parientes alopátricos (derecha). Las alopátricas son un buen control porque, al ser especies hermanas, suenan parecido a los modelos: cualquier parecido por azar debería repartirse entre ambas. Las barras son esquemáticas.
 :::
 
 ## Datos de entrenamiento
@@ -787,12 +837,21 @@ box <- function(x, y, w, h, fill, col, lwd = 1.6, r = 0.25)
                                           gp = grid::gpar(fill = fill, col = col, lwd = lwd)),
                       xmin = x - w / 2, xmax = x + w / 2, ymin = y - h / 2, ymax = y + h / 2)
 
+# height of suwo and the repositories: the same height on the slide as the centre of the
+# catalogue of the focal bellbird (step 3, which is moved down 26 px more than step 1 and has its
+# centre at cat_y; 6.47 px per unit)
+suwo_y <- 21
 repo_icons <- c("images/repo_xc.png", "images/repo_gbif.png", "images/repo_inat.png",
                 "images/repo_ml.png")
 models <- data.frame(x = 97.5, y = c(35.5, 14.5),
     title = c("Discriminar\nsimpátricas\ny alopátricas", "Discriminar\nsimpátricas"),
     text = c("+ pájaro campana\n(7 clases)",
              "+ pájaro campana\n(4 clases)"))
+# overall performance on the test recordings: macro-averaged F1 at the optimal thresholds
+# (BirdNET-Analyzer evaluation files)
+f1 <- sapply(c("sympatric_and_allopatric/sympatric_and_allopatric", "sympatric/sympatric"), function(f)
+    read.csv(paste0("../data/processed/birdnet_models/", f, "_evaluation.csv"), check.names = FALSE)[1, "F1 Score (opt)"])
+models$text <- paste0(models$text, "\nF1 global: ", round(f1 * 100), " %")
 
 # the diagram is drawn as four layers of the same size, stacked on the slide: the timeline
 # (always shown), step 1 (recordings), step 2 (training) and step 3 (classification)
@@ -830,16 +889,16 @@ g <- ggplot() +
              label = paste("Total:", format(sum(n_ex), big.mark = " "), "cantos")) +
     # recordings downloaded with suwo from the repositories (icons), arrow into the data block
     # (the arrow goes from suwo to the data block, behind the white box with the repository icons)
-    img_box("images/logo_suwo_web.png", 3, 32.3, 12, 14.3) +
-    annotate("segment", x = 9.4, xend = 24.6, y = 32.3, yend = 32.3, colour = deck_cols[["titulo"]],
+    img_box("images/logo_suwo_web.png", 3, suwo_y, 12, 14.3) +
+    annotate("segment", x = 9.4, xend = 24.6, y = suwo_y, yend = suwo_y, colour = deck_cols[["titulo"]],
              linewidth = 1.2, arrow = arrow_) +
-    box(16.3, 32.3, 8.4, 28, "white", grey_box, lwd = 1.6) +
-    annotate("text", x = 3, y = 40.9, label = "Paquete\nde R suwo", vjust = 0, size = 4.4,
+    box(16.3, suwo_y, 8.4, 28, "white", grey_box, lwd = 1.6) +
+    annotate("text", x = 3, y = suwo_y + 8.6, label = "Paquete\nde R suwo", vjust = 0, size = 4.4,
              lineheight = 0.9, fontface = "bold", family = font_family, colour = deck_cols[["texto"]]) +
-    annotate("text", x = 16.3, y = 47.2, label = "Repositorios\nen línea", vjust = 0, size = 4.4,
+    annotate("text", x = 16.3, y = suwo_y + 14.9, label = "Repositorios\nen línea", vjust = 0, size = 4.4,
              lineheight = 0.9, fontface = "bold", family = font_family, colour = deck_cols[["texto"]]) +
     lapply(seq_along(repo_icons), function(i)
-        img_box(repo_icons[i], 16.3, c(43.2, 35.5, 28.4, 21.4)[i], 6.5, 4.2)) +
+        img_box(repo_icons[i], 16.3, suwo_y + c(10.9, 3.2, -3.9, -10.9)[i], 6.5, 4.2)) +
     # grey line between sympatric and allopatric species
     annotate("segment", x = 47, xend = 47, y = row_y[3] - 6.8, yend = 62.3, colour = grey_box,
              linewidth = 0.6) +
@@ -948,9 +1007,14 @@ cls <- c('', '.fragment .atenuar data-fragment-index="1"', '.tenue',
          '.fragment data-fragment-index="2"', '.fragment .atenuar data-fragment-index="1"',
          NA, '.fragment data-fragment-index="1"', '.fragment data-fragment-index="2"')
 src <- steps[c(1, 2, 3, 3, 4, 4, 5, 6, 8, 7)]
+# the graphics under the timeline go down a little, to be centred between the timeline and the
+# bottom of the slide (styles_revealjs.css): step 1 (left, class .bajar) and steps 2 and 3
+# (right, class .bajar-der) each centred on its own
+cls[7] <- paste(".bajar", cls[7])
+cls[c(9, 10)] <- paste(".bajar-der", cls[c(9, 10)])
 img_md <- sprintf('![](%s){%s fig-alt="%s" height="%s"}', src, cls,
                   c(alt, rep("", length(src) - 1)), img_h)
-img_md[is.na(cls)] <- sprintf(paste0('<div class="fragment" data-fragment-index="1"><img class="fragment atenuar" ',
+img_md[is.na(cls)] <- sprintf(paste0('<div class="fragment bajar-der" data-fragment-index="1"><img class="fragment atenuar" ',
                                      'data-fragment-index="2" src="%s" alt="" height="%s"></div>'),
                               src[is.na(cls)], sub("px", "", img_h))
 cat("\n::: {.r-stack}\n", paste(img_md, collapse = "\n\n"), "\n:::\n", sep = "")
@@ -960,7 +1024,7 @@ cat("\n::: {.r-stack}\n", paste(img_md, collapse = "\n\n"), "\n:::\n", sep = "")
 **Unos 40 s.** Reentrenamos BirdNET, una red ya entrenada con miles de especies, con nuestras propias clases. Usamos el modelo V2.4 (BirdNET-Analyzer 2.4.0), la versión anterior a la actual. Usamos ejemplos de 2 segundos de cada especie ; el 80 % de las grabaciones para entrenar y el 20 % para evaluar, sin repetir ninguna. Entrenamos dos modelos: uno con las simpátricas, sus parientes alopátricos y el pájaro campana, y otro solo con las simpátricas y el pájaro campana.
 :::
 
-## Discriminar simpátricas + alopátricas {.desempeno .titulo-pequeno}
+## Discriminar simpátricas + alopátricas {.desempeno .titulo-pequeno visibility="hidden"}
 
 ```{r}
 #| fig-width: 9
@@ -977,12 +1041,17 @@ plot_conf("./data/confusion_sympatric_allopatric.csv", order7, text_size = 6.2, 
     lapply(pair_y, function(y) box(conf_box_x, y, conf_box_w, 1.9, NA, grey_box, lwd = 2)) +
     annotate("text", x = 8, y = pair_y, label = pair_lab, hjust = 0, size = 6.2,
              family = font_family, colour = deck_cols[["texto"]]) +
-    theme(plot.margin = margin(t = 10, r = 140, b = 5, l = 5),
+    # colour key of the species names, above the matrix
+    annotate("point", x = c(1.6, 4.6), y = 8.05, shape = 15, size = 6.5,
+             colour = type_cols[c("Simpátrica", "Alopátrica")]) +
+    annotate("text", x = c(1.6, 4.6) + 0.3, y = 8.05, label = c("Simpátricas", "Alopátricas"),
+             hjust = 0, size = 6.6, family = font_family, colour = type_cols[c("Simpátrica", "Alopátrica")]) +
+    theme(plot.margin = margin(t = 40, r = 140, b = 5, l = 5),
           axis.title.y = element_text(margin = margin(r = 28)))   # clear of the pair boxes
 ```
 
 ::: {.fuente}
-873 vocalizaciones de prueba (no usadas para entrenar)
+870 vocalizaciones de prueba (no usadas para entrenar)
 :::
 
 ::: {.notes}
@@ -1007,12 +1076,16 @@ bars$Freq[is.na(bars$Freq)] <- 0
 bars$prop <- bars$Freq / bars$total
 bars$bird <- factor(bird_labels[bars$bird], levels = bird_labels)
 bars$group <- factor(bars$group, levels = c("Tucanes", "Aracaris", "Oropéndolas"))
+bars$type <- factor(bars$type, levels = c("Simpátrica", "Alopátrica"))   # sympatric bar first
+# panel subtitle with the number of vocalizations classified (all classes, the denominator of the
+# percentages), e.g. "Campana focal (n = 3 394)"
+bars$strip <- paste0(bars$bird, " (n = ", formatC(bars$total, big.mark = " ", format = "d"), ")")
 
-# drawings above each bar: alopatric on the left, sympatric on the right
+# drawings above each bar: sympatric on the left, allopatric on the right
 bias_sp <- data.frame(
-    sp = c("Ramphastos brevis", "Ramphastos sulfuratus",
-           "Pteroglossus erythropygius", "Pteroglossus torquatus",
-           "Psarocolius guatimozinus", "Psarocolius montezuma"),
+    sp = c("Ramphastos sulfuratus", "Ramphastos brevis",
+           "Pteroglossus torquatus", "Pteroglossus erythropygius",
+           "Psarocolius montezuma", "Psarocolius guatimozinus"),
     x = rep(1:3, each = 2) + c(-0.2, 0.2)
 )
 
@@ -1025,7 +1098,7 @@ bias_panel <- function(b, y_axis) {
         geom_col(position = position_dodge(width = 0.8), width = 0.75) +
         geom_text(aes(label = Freq), position = position_dodge(width = 0.8),
                   vjust = -0.4, size = 6) +
-        facet_wrap(~ bird) +
+        facet_wrap(~ strip) +
         lapply(seq_len(nrow(bias_sp)), function(i)
             sp_above(bias_sp$sp[i], bias_sp$x[i], d$prop[d$pred == bias_sp$sp[i]])) +
         coord_cartesian(clip = "off") +
@@ -1056,17 +1129,15 @@ bias_plot <- function(show_other) {
 bias_plot(show_other = FALSE)
 ```
 
-<!-- same text as on the next slide, hidden, so that both plots have the same size -->
-::: {.oculto}
+<!-- same text as on the next slide (the second line hidden), so that both plots have the same size -->
 <div class="nota-gris">
-<center><span class="texto-medio">Focal: **93 %** <span class="simp">simpátricas</span> (~14 veces más que <span class="alop">alopátricas</span>)</span></center>
+<center><span class="texto-medio">Focal: <span class="simp">simpátricas</span> 14 veces más que <span class="alop">alopátricas</span><br><span class="oculto">Otros campanas: solo 1 de 137 heteroespecífica (<span class="alop">alopátrica</span>)</span></span></center>
 </div>
-:::
 
 ::: {.notes}
 **Hasta 7:00.** El resultado principal, primero en el individuo focal: la gran mayoría de sus clasificaciones heteroespecíficas caen en la especie simpátrica, sobre todo el tucán pico iris y el aracari de collar.
 
-Otros campanas: solo 3 de 177 heteroespecíficas, todas alopátricas
+Otros campanas: solo 1 de 137 heteroespecífica (alopátrica)
 :::
 
 ## Semejanza a simpátricas vs alopátricas {.titulo-pequeno}
@@ -1077,14 +1148,14 @@ bias_plot(show_other = TRUE)
 ```
 
 <div class="nota-gris">
-<center><span class="texto-medio">Focal: **93 %** <span class="simp">simpátricas</span> (~14 veces más que <span class="alop">alopátricas</span>)</br>Otros campanas: solo 3 de 177 heteroespecíficas, todas <span class="alop">alopátricas</span></span></center>
+<center><span class="texto-medio">Focal: <span class="simp">simpátricas</span> 14 veces más que <span class="alop">alopátricas</span><br><span>Otros campanas: solo 1 de 137 heteroespecífica (<span class="alop">alopátrica</span>)</span></span></center>
 </div>
 
 ::: {.notes}
-**Hasta 7:30.** Ahora los otros pájaros campana: sin este sesgo. Cuando el focal se clasifica como otra especie, el 93 % de las veces es la simpátrica (IC 95 %: 91–96 %), unas 14 veces más que su pariente alopátrico; por azar esperaríamos mitad y mitad. Los otros campanas (grabaciones de prueba, no usadas para entrenar) casi nunca se clasifican como otra especie: 3 de 177, y las tres como alopátrica. Esto apoya el mimetismo genuino.
+**Hasta 7:30.** Ahora los otros pájaros campana: sin este sesgo. Cuando el focal se clasifica como otra especie, el 93 % de las veces es la simpátrica (IC 95 %: 91–96 %), unas 14 veces más que su pariente alopátrico; por azar esperaríamos mitad y mitad. Los otros campanas (grabaciones de prueba, no usadas para entrenar) casi nunca se clasifican como otra especie: 1 de 137 grabaciones, y fue como alopátrica. Esto apoya el mimetismo genuino.
 :::
 
-## Discriminar simpátricas {.desempeno .titulo-pequeno}
+## Discriminar simpátricas {.desempeno .titulo-pequeno visibility="hidden"}
 
 ```{r}
 #| fig-width: 5.6
@@ -1114,13 +1185,16 @@ sp_bars$prop <- sp_bars$Freq / sp_bars$total
 sp_short <- setNames(paste0(substr(sp_levels, 1, 1), ". ", sub(".* ", "", sp_levels)), sp_levels)
 sp_bars$species <- factor(sp_short[sp_bars$pred], levels = sp_short)
 sp_bars$bird <- factor(bird_labels[sp_bars$bird], levels = bird_labels)
+# legend labels with the number of vocalizations classified (the denominator of the percentages)
+sp_n <- tapply(sp_bars$total, sp_bars$bird, unique)
+sp_lab <- paste0(names(sp_n), " (n = ", formatC(as.numeric(sp_n), big.mark = " ", format = "d"), ")")
 
 ggplot(sp_bars, aes(x = species, y = prop, fill = bird)) +
     geom_col(position = position_dodge(width = 0.8), width = 0.75) +
     # number of vocalizations (fragments) classified as each species, as on the previous slides
     geom_text(aes(label = Freq), position = position_dodge(width = 0.8),
               vjust = -0.4, size = 6) +
-    scale_fill_manual(values = mako(10)[c(7, 3)], name = "") +
+    scale_fill_manual(values = c(adjustcolor("orange", 0.6), mako(10)[3]), name = "", labels = sp_lab) +
     scale_y_continuous(labels = label_percent(), expand = expansion(mult = c(0, 0.45))) +
     # each drawing above the taller bar of its species
     lapply(seq_along(sp_levels), function(i)
@@ -1388,7 +1462,7 @@ ds_pair("bock", "Procnias tricarunculatus", "<i>Procnias tricarunculatus</i><br>
 
 ::: {.column width="66%"}
 <div class="recursos">
-<p><b>Financiamiento</b>: Centro de Investigación en Neurociencias, UCR</p>
+<p><b>Financiamiento</b>: Centro de Investigación en Neurociencias, Universidad de Costa Rica</p>
 <p><b>Ilustraciones de aves</b>: Birds of the World (Cornell Lab of Ornithology)</p>
 <p><b>Fotos</b>: David Jimenez</p>
 </div>
@@ -1442,7 +1516,6 @@ Dejar esta diapositiva durante las preguntas (3 min). Después vienen las de res
 <li>Kroodsma, D. E. et al. (2013). Behavioral evidence for song learning in the suboscine bellbirds (<i>Procnias</i> spp.; Cotingidae). <i>The Wilson Journal of Ornithology</i> 125: <span class="sin-corte">1–14.&nbsp;<a href="https://doi.org/10.1676/12-033.1" aria-label="enlace" title="https://doi.org/10.1676/12-033.1"><svg class="icono-enlace" viewBox="0 0 24 24" aria-hidden="true"><path d="M14 4h6v6M20 4l-9 9"/><path d="M18 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h5"/></svg></a></span></li>
 <li>McTavish, E. J. et al. (2025). A complete and dynamic tree of birds. <i>Proceedings of the National Academy of Sciences</i>.</li>
 <li>Saranathan, V., Hamilton, D., Powell, G. V. N., Kroodsma, D. E. y Prum, R. O. (2007). Genetic evidence supports song learning in the three-wattled bellbird <i>Procnias tricarunculata</i>. <i>Molecular Ecology</i> 16: <span class="sin-corte">3689–3702.&nbsp;<a href="https://doi.org/10.1111/j.1365-294X.2007.03415.x" aria-label="enlace" title="https://doi.org/10.1111/j.1365-294X.2007.03415.x"><svg class="icono-enlace" viewBox="0 0 24 24" aria-hidden="true"><path d="M14 4h6v6M20 4l-9 9"/><path d="M18 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h5"/></svg></a></span></li>
-<li>Suh, A. et al. (2011). Mesozoic retroposons reveal parrots as the closest living relatives of passerine birds. <i>Nature Communications</i> 2: <span class="sin-corte">443.&nbsp;<a href="https://doi.org/10.1038/ncomms1448" aria-label="enlace" title="https://doi.org/10.1038/ncomms1448"><svg class="icono-enlace" viewBox="0 0 24 24" aria-hidden="true"><path d="M14 4h6v6M20 4l-9 9"/><path d="M18 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h5"/></svg></a></span></li>
 <li>Ten Cate, C. (2021). Re-evaluating vocal production learning in non-oscine birds. <i>Philosophical Transactions of the Royal Society B</i> 376: <span class="sin-corte">20200249.&nbsp;<a href="https://doi.org/10.1098/rstb.2020.0249" aria-label="enlace" title="https://doi.org/10.1098/rstb.2020.0249"><svg class="icono-enlace" viewBox="0 0 24 24" aria-hidden="true"><path d="M14 4h6v6M20 4l-9 9"/><path d="M18 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h5"/></svg></a></span></li>
 </ol>
 <div class="ref-volver"><a href="#/agradecimientos-y-recursos">&#8592; Volver a recursos</a></div>

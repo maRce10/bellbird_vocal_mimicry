@@ -140,6 +140,13 @@ common_names <- c(
   "nocall" = "Unassigned"
 )
 
+# BirdNET classifies each clip in several windows (1 to 5). Keep one window per clip: the most
+# confident window that passed its class threshold, or a "nocall" window if none did
+one_per_clip <- function(x) {
+  x <- x[order(x$sound.files, x$predicted_sp == "nocall", -x$Confidence), ]
+  x[!duplicated(x$sound.files), ]
+}
+
 # to create several posterior predictive check plots out of a brms fit
 custom_ppc <- function(fit, group = NULL, ndraws = 30) {
   by_group  <- if (!is.null(group)) {
@@ -256,6 +263,7 @@ sympatric_allopatric_test$`Common Name`[!sympatric_allopatric_test$true.positive
 
 # rename column
 sympatric_allopatric_test$predicted_sp <- sympatric_allopatric_test$`Common Name`
+sympatric_allopatric_test <- one_per_clip(sympatric_allopatric_test)
 
 sympatric_allopatric_test$`Common Name` <- NULL
 
@@ -525,6 +533,7 @@ mimic_class$sound.files <- basename(gsub(
 
 # rename column
 mimic_class$predicted_sp <- mimic_class$`Common Name`
+mimic_class <- one_per_clip(mimic_class)
 mimic_class$vocalizing_sp <- "Procnias tricarunculatus"
 
 mimic_class$`Common Name` <- NULL
@@ -971,7 +980,7 @@ chains <- 4
 iter <- 4000
 
 # heterospecific classifications by bird and type (1 = sympatric, 0 = allopatric). Held-out
-# clips of other bellbirds are almost never classified as a model species (3 clips, all
+# clips of other bellbirds are almost never classified as a model species (1 clip,
 # allopatric), so a focal vs others contrast is not estimable: an earlier version with
 # vocalizing_type and (1 | genus) (3 genera) gave hundreds of divergent transitions and an
 # estimate set by the prior. The model therefore estimates, for the focal bird only, the
@@ -1137,6 +1146,7 @@ sympatric_class_test$`Common Name`[!sympatric_class_test$true.positive] <- "noca
 
 # rename column
 sympatric_class_test$predicted_sp <- sympatric_class_test$`Common Name`
+sympatric_class_test <- one_per_clip(sympatric_class_test)
 
 sympatric_class_test$`Common Name` <- NULL
 
@@ -1304,6 +1314,7 @@ sympatric_focal$`Common Name`[!sympatric_focal$true.positive] <- "nocall"
 
 # rename column
 sympatric_focal$predicted_sp <- sympatric_focal$`Common Name`
+sympatric_focal <- one_per_clip(sympatric_focal)
 
 sympatric_focal$`Common Name` <- NULL
 

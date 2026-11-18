@@ -6,13 +6,23 @@
 html_file <- "presentation.html"
 if (file.exists(html_file)) {
   html <- readChar(html_file, file.size(html_file), useBytes = TRUE)
-  refs <- unique(regmatches(html, gregexpr('data-background-video="[^"]+"', html, useBytes = TRUE))[[1]])
+  refs <- unique(regmatches(
+    html,
+    gregexpr('data-background-video="[^"]+"', html, useBytes = TRUE)
+  )[[1]])
   n <- 0
   for (ref in refs) {
     src <- sub('^data-background-video="([^"]+)"$', "\\1", ref)
-    if (!file.exists(src)) next
-    html <- gsub(ref, paste0('data-background-video-b64="', base64enc::base64encode(src), '"'), html,
-                 fixed = TRUE, useBytes = TRUE)
+    if (!file.exists(src)) {
+      next
+    }
+    html <- gsub(
+      ref,
+      paste0('data-background-video-b64="', base64enc::base64encode(src), '"'),
+      html,
+      fixed = TRUE,
+      useBytes = TRUE
+    )
     n <- n + 1
   }
   if (n > 0) {
@@ -61,11 +71,17 @@ if (file.exists(html_file)) {
       "};",
       "if (Reveal.isReady && Reveal.isReady()) start(); else Reveal.on('ready', start);",
       "}",
-      "})();</script>")
+      "})();</script>"
+    )
     # before the last </body> (the page's own; scripts in the page contain the string too)
     parts <- strsplit(html, "</body>", fixed = TRUE, useBytes = TRUE)[[1]]
     k <- length(parts)
-    html <- paste0(paste(parts[-k], collapse = "</body>"), js, "\n</body>", parts[k])
+    html <- paste0(
+      paste(parts[-k], collapse = "</body>"),
+      js,
+      "\n</body>",
+      parts[k]
+    )
   }
   writeChar(html, html_file, eos = NULL, useBytes = TRUE)
 }

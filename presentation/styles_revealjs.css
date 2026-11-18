@@ -175,7 +175,7 @@
 
 .reveal .ds-etiqueta {
     position: absolute;
-    top: 0;
+    /* bottom (set inline by ds_pair()): the base of the name on the base of the spectrogram */
     left: -125px;
     width: 118px;
     display: flex;
@@ -786,17 +786,39 @@
 }
 
 /* arrows from the hypothesis boxes to their predictions (Semejanza vocal) */
-.reveal .flechas-prediccion {
+/* Semejanza vocal: the two predictions side by side, each under its hypothesis box */
+.reveal .prediccion-fila {
     display: grid;
     grid-template-columns: 1fr 1fr;
-    justify-items: center;
-    margin: 0.1em 0 -0.4em 0;
+    gap: 0 2%;
 }
-.reveal .flechas-prediccion svg {
+.reveal .prediccion-fila p {
+    margin: 0;
+}
+.reveal .flecha-prediccion {
+    text-align: center;
+    margin: 0.1em 0 -0.3em 0;
+}
+.reveal .flecha-prediccion svg {
     width: 34px;
     height: 52px;
 }
-.reveal .flechas-prediccion path {
+/* colour key under the predictions */
+.reveal .leyenda-tipos {
+    display: flex;
+    justify-content: center;
+    gap: 1.2em;
+    font-size: 0.75em;
+    margin-top: 0.2em;
+}
+.reveal .leyenda-tipos i {
+    display: inline-block;
+    width: 0.8em;
+    height: 0.8em;
+    margin-right: 0.3em;
+    vertical-align: -0.05em;
+}
+.reveal .flecha-prediccion path {
     fill: none;
     stroke: var(--col-titulo, #366A9F);
     stroke-width: 5;
@@ -945,4 +967,13 @@
 .reveal .slides section.foto-izquierda .callout b,
 .reveal .slides section.foto-izquierda .callout strong {
     color: black;
+}
+
+/* Entrenamiento de los modelos: the graphics under the timeline, moved down to be centred between
+   the timeline and the bottom of the slide (the timeline layers stay in place) */
+.reveal .slide .r-stack .bajar {
+    transform: translateY(-20px);
+}
+.reveal .slide .r-stack .bajar-der {
+    transform: translateY(6px);
 }
