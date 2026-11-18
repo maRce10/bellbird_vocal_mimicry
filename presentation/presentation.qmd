@@ -219,7 +219,7 @@ plot_conf <- function(file, species_order, text_size = 5, draw_w = 1, draw_h = 0
 ds_pair <- function(pair, model_sp, model_title, wl = 512, collevels = seq(-50, 0, 5), bp = NULL) {
     wl <- rep(wl, length.out = 2)
     clips <- paste0("clip_", pair, c("_focal", "_model"))
-    titles <- c("<i>Procnias tricarunculatus</i><br>focal", model_title)
+    titles <- c("Campana focal", model_title)
     # focal bellbird: the same drawing as in the training diagram (flipped by .dibujos-volteados)
     drawings <- c("images/campana_focal_dibujo.png", sp_file(model_sp))
     # model on top and focal bellbird below: reverse the order (wl stays focal first)
@@ -515,7 +515,7 @@ Tyranni: en general, considerados no aprendices. Pero en _Procnias_ hay:
 ::::
 
 ::: {.callout-note icon=false appearance="simple"}
-<span class="texto-grande">**Objetivo:** desarrollar un enfoque de aprendizaje profundo para evaluar el mimetismo vocal heteroespecífico en un juvenil de pájaro campana</span>
+<span class="texto-grande">**Objetivo:** desarrollar un enfoque de aprendizaje profundo para evaluar el mimetismo vocal heteroespecífico en la campana focal, un juvenil de pájaro campana</span>
 :::
 
 ::: {.fuente}
@@ -533,19 +533,19 @@ Snow 1970, 1977; Saranathan et al. 2007; Kroodsma et al. 2013
 <div class="subtitulo-video sobre-espectro" style="--alto: 0.01; --tamano: 32px">Adulto de <i>P. tricarunculatus</i> en Monteverde, Costa Rica</div>
 
 ::: {.notes}
-Video a pantalla completa (66 s, con sonido): el juvenil imitando al aracari y luego al tucán. Empieza solo al llegar a la diapositiva. Para acortarlo, avanzar a la siguiente.
+Video a pantalla completa (66 s, con sonido): la campana focal imitando al aracari y luego al tucán. Empieza solo al llegar a la diapositiva. Para acortarlo, avanzar a la siguiente.
 :::
 
 
 ## {.video-subtitulo background-video="images/focal_spectrogram_black.mp4" background-size="contain" background-color="black"}
 
-<div class="subtitulo-video sobre-espectro" style="--alto: 0.01; --tamano: 32px">Juvenil de <i>P. tricarunculatus</i> en Refugio Bosque Alegre, Costa Rica</div>
+<div class="subtitulo-video sobre-espectro" style="--alto: 0.01; --tamano: 32px">Campana focal: juvenil de <i>P. tricarunculatus</i>, Refugio Bosque Alegre, Costa Rica</div>
 
 
 ::: {.notes}
-Video a pantalla completa (66 s, con sonido): el juvenil imitando al aracari y luego al tucán. Empieza solo al llegar a la diapositiva. Para acortarlo, avanzar a la siguiente.
+Video a pantalla completa (66 s, con sonido): la campana focal imitando al aracari y luego al tucán. Empieza solo al llegar a la diapositiva. Para acortarlo, avanzar a la siguiente.
 
-**Hasta 3:55.** Pablo encontró este juvenil solo, interactuando con tucanes y aracaris. No vio otro pájaro campana en el área, ni antes ni después, así que es poco probable que los sonidos vengan de otro individuo. Por la muda y la falta de carúnculas estimamos unos dos o tres años. Y sonaba así.
+**Hasta 3:55.** Pablo encontró la campana focal, un juvenil, sola, interactuando con tucanes y aracaris. No vio otro pájaro campana en el área, ni antes ni después, así que es poco probable que los sonidos vengan de otro individuo. Por la muda y la falta de carúnculas estimamos unos dos o tres años. Y sonaba así.
 :::
 
 ## Aparentes imitaciones {.dibujos-volteados}
@@ -559,7 +559,7 @@ ds_pair("toucan", "Ramphastos sulfuratus", "<i>Ramphastos sulfuratus</i>", wl = 
 ```
 
 ::: {.notes}
-**Hasta 4:35.** Al avanzar (→) suenan los dos en secuencia, y el siguiente → pasa a la otra diapositiva: primero el focal (arriba), luego el tucán pico iris (abajo). Clic sobre un espectrograma para empezar desde ese punto.
+**Hasta 4:35.** Al avanzar (→) suenan los dos en secuencia, y el siguiente → pasa a la otra diapositiva: primero la campana focal (arriba), luego el tucán pico iris (abajo). Clic sobre un espectrograma para empezar desde ese punto.
 :::
 
 ## Aparentes imitaciones {.dibujos-volteados}
@@ -572,7 +572,7 @@ ds_pair("aracari", "Pteroglossus torquatus", "<i>Pteroglossus torquatus</i>", wl
 ```
 
 ::: {.notes}
-**Hasta 5:10.** Al avanzar (→) suenan los dos en secuencia: focal y aracari de collar.
+**Hasta 5:10.** Al avanzar (→) suenan los dos en secuencia: campana focal y aracari de collar.
 :::
 
 ## Aparentes imitaciones {.dibujos-volteados}
@@ -585,18 +585,18 @@ ds_pair("oropendola_birdnet", "Psarocolius montezuma", "<i>Psarocolius montezuma
 ```
 
 ::: {.notes}
-Al avanzar (→) suenan los dos en secuencia: focal y oropéndola de Moctezuma. Este sonido del juvenil (grabación INVEST_0093) fue clasificado como oropéndola por ambos modelos de BirdNET. Suena convincente, pero el oído puede engañar: necesitamos una prueba.
+Al avanzar (→) suenan los dos en secuencia: campana focal y oropéndola de Moctezuma. Este sonido de la campana focal (grabación INVEST_0093) fue clasificado como oropéndola por ambos modelos de BirdNET. Suena convincente, pero el oído puede engañar: necesitamos una prueba.
 :::
 
 ## Flujo de análisis {visibility="hidden"}
 
 ```{=html}
 <div class="flujo">
-<div class="flujo-caja flujo-focal"><img src="images/icono_procnias_tricarunculatus.png" alt=""><div><b>Grabaciones del juvenil</b><span>Monteverde, abril a noviembre de 2020</span></div></div>
+<div class="flujo-caja flujo-focal"><img src="images/icono_procnias_tricarunculatus.png" alt=""><div><b>Grabaciones de la campana focal</b><span>Monteverde, abril a noviembre de 2020</span></div></div>
 <div class="flujo-flecha">&#8594;</div>
-<div class="flujo-caja flujo-focal"><div><b>Anotación</b><span>Vocalizaciones del juvenil</span></div></div>
+<div class="flujo-caja flujo-focal"><div><b>Anotación</b><span>Vocalizaciones de la campana focal</span></div></div>
 <div class="flujo-flecha">&#8594;</div>
-<div class="flujo-caja flujo-focal"><div><b>Posibles modelos</b><span>Especies <span class="simp">simpátricas</span> que el juvenil parece imitar</span></div></div>
+<div class="flujo-caja flujo-focal"><div><b>Posibles modelos</b><span>Especies <span class="simp">simpátricas</span> que la campana focal parece imitar</span></div></div>
 <div></div>
 <div></div>
 <div></div>
@@ -622,7 +622,7 @@ Al avanzar (→) suenan los dos en secuencia: focal y oropéndola de Moctezuma. 
 ```
 
 ::: {.notes}
-**Unos 30 s.** Primero anotamos las grabaciones del juvenil e identificamos las especies que parecía imitar. Con eso definimos las especies de referencia: las simpátricas, sus parientes alopátricos y otros pájaros campana. Descargamos sus grabaciones con suwo, las anotamos, las cortamos en fragmentos de 2 segundos y reentrenamos BirdNET. Finalmente evaluamos el desempeño con grabaciones que el modelo no había visto.
+**Unos 30 s.** Primero anotamos las grabaciones de la campana focal e identificamos las especies que parecía imitar. Con eso definimos las especies de referencia: las simpátricas, sus parientes alopátricos y otros pájaros campana. Descargamos sus grabaciones con suwo, las anotamos, las cortamos en fragmentos de 2 segundos y reentrenamos BirdNET. Finalmente evaluamos el desempeño con grabaciones que el modelo no había visto.
 :::
 
 ## Semejanza vocal {.nostretch}
@@ -633,7 +633,7 @@ arrow from its hypothesis box, on click) -->
 
 ::: {.column width="50%"}
 ::: {.callout-note icon=false appearance="simple"}
-<span class="texto-medio"><b>Mimetismo:</b> copia de las especies que el juvenil puede escuchar</span>
+<span class="texto-medio"><b>Mimetismo:</b> copia de las especies que la campana focal puede escuchar</span>
 :::
 :::
 
@@ -717,7 +717,7 @@ Kelley et al. 2008; Dalziell et al. 2015
 :::
 
 ::: {.notes}
-**Unos 40 s.** Queremos distinguir dos posibilidades. Si el juvenil está copiando, sus vocalizaciones deberían parecerse más a las simpátricas, que son las que puede escuchar (izquierda). Si produce vocalizaciones variables que por casualidad se parecen a otras especies, el clasificador debería asignarlas por igual a las simpátricas y a sus parientes alopátricos (derecha). Las alopátricas son un buen control porque, al ser especies hermanas, suenan parecido a los modelos: cualquier parecido por azar debería repartirse entre ambas. Las barras son esquemáticas.
+**Unos 40 s.** Queremos distinguir dos posibilidades. Si la campana focal está copiando, sus vocalizaciones deberían parecerse más a las simpátricas, que son las que puede escuchar (izquierda). Si produce vocalizaciones variables que por casualidad se parecen a otras especies, el clasificador debería asignarlas por igual a las simpátricas y a sus parientes alopátricos (derecha). Las alopátricas son un buen control porque, al ser especies hermanas, suenan parecido a los modelos: cualquier parecido por azar debería repartirse entre ambas. Las barras son esquemáticas.
 :::
 
 ## Datos de entrenamiento
@@ -1097,11 +1097,11 @@ bias_plot(show_other = FALSE)
 
 <!-- same text as on the next slide (the second line hidden), so that both plots have the same size -->
 <div class="nota-gris">
-<center><span class="texto-medio">Focal: <span class="simp">simpátricas</span> 14 veces más que <span class="alop">alopátricas</span><br><span class="oculto">Otros campanas: grabaciones de prueba (no usadas para entrenar)</span></span></center>
+<center><span class="texto-medio">Campana focal: <span class="simp">simpátricas</span> 14 veces más que <span class="alop">alopátricas</span><br><span class="oculto">Otros campanas: grabaciones de prueba (no usadas para entrenar)</span></span></center>
 </div>
 
 ::: {.notes}
-**Hasta 7:00.** El resultado principal, primero en el individuo focal: la gran mayoría de sus clasificaciones heteroespecíficas caen en la especie simpátrica, sobre todo el tucán pico iris y el aracari de collar.
+**Hasta 7:00.** El resultado principal, primero en la campana focal: la gran mayoría de sus clasificaciones heteroespecíficas caen en la especie simpátrica, sobre todo el tucán pico iris y el aracari de collar.
 :::
 
 ## Semejanza a simpátricas vs alopátricas {.titulo-pequeno}
@@ -1112,11 +1112,11 @@ bias_plot(show_other = TRUE)
 ```
 
 <div class="nota-gris">
-<center><span class="texto-medio">Focal: <span class="simp">simpátricas</span> 14 veces más que <span class="alop">alopátricas</span><br>Otros campanas: grabaciones de prueba (no usadas para entrenar)</span></span></center>
+<center><span class="texto-medio">Campana focal: <span class="simp">simpátricas</span> 14 veces más que <span class="alop">alopátricas</span><br>Otros campanas: grabaciones de prueba (no usadas para entrenar)</span></span></center>
 </div>
 
 ::: {.notes}
-**Hasta 7:30.** Ahora los otros pájaros campana: sin este sesgo. Cuando el focal se clasifica como otra especie, el 93 % de las veces es la simpátrica (IC 95 %: 91–96 %), unas 14 veces más que su pariente alopátrico; por azar esperaríamos mitad y mitad. Los otros campanas (grabaciones de prueba, no usadas para entrenar) casi nunca se clasifican como otra especie: 1 de 137 grabaciones, y fue como alopátrica. Esto apoya el mimetismo genuino.
+**Hasta 7:30.** Ahora los otros pájaros campana: sin este sesgo. Cuando la campana focal se clasifica como otra especie, el 93 % de las veces es la simpátrica (IC 95 %: 91–96 %), unas 14 veces más que su pariente alopátrico; por azar esperaríamos mitad y mitad. Los otros campanas (grabaciones de prueba, no usadas para entrenar) casi nunca se clasifican como otra especie: 1 de 137 grabaciones, y fue como alopátrica. Esto apoya el mimetismo genuino.
 :::
 
 ## Semejanza a simpátricas {.desempeno .titulo-pequeno}
@@ -1228,7 +1228,7 @@ ggplot(points[points$prop > 0, ], aes(x = date, y = prop, color = species, fill 
 
 
 ::: {.notes}
-Video a pantalla completa (32 s, con sonido): el juvenil al lado del aracari y luego del tucán.
+Video a pantalla completa (32 s, con sonido): la campana focal al lado del aracari y luego del tucán.
 :::
 
 
@@ -1300,7 +1300,7 @@ En ambos casos, adquirir sonidos heteroespecíficos **implica aprendizaje vocal*
 ::: {.callout-note icon=false appearance="simple"}
 <div class="texto-medio">
 
-- Evidencia **cuantitativa** de mimetismo vocal heteroespecífico en un juvenil de pájaro campana
+- Evidencia **cuantitativa** de mimetismo vocal heteroespecífico en la campana focal, un juvenil de pájaro campana
 
 </div>
 :::
