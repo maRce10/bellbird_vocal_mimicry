@@ -1224,11 +1224,11 @@ ggplot(points[points$prop > 0, ], aes(x = date, y = prop, color = species, fill 
 **Hasta 8:55.** Las primeras observaciones están dominadas por sonidos parecidos al tucán y, en menor medida, al aracari. Con el tiempo aumenta la probabilidad de clasificarse como pájaro campana (la única tendencia clara). El tucán tiende a bajar, pero con la variación entre días su intervalo incluye el cero; el aracari tampoco muestra una tendencia clara.
 :::
 
-## {.video-subtitulo background-video="images/hanging_with_models_web.mp4" background-size="contain" background-color="black"}
+## {.video-subtitulo background-video="images/hanging_with_models_short_web.mp4" background-size="contain" background-color="black"}
 
 
 ::: {.notes}
-Video a pantalla completa (66 s, con sonido): el juvenila lado del aracari y luego del tucán. 
+Video a pantalla completa (32 s, con sonido): el juvenil al lado del aracari y luego del tucán.
 :::
 
 
