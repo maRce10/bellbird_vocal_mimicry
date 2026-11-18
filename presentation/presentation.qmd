@@ -1024,40 +1024,6 @@ cat("\n::: {.r-stack}\n", paste(img_md, collapse = "\n\n"), "\n:::\n", sep = "")
 **Unos 40 s.** Reentrenamos BirdNET, una red ya entrenada con miles de especies, con nuestras propias clases. Usamos el modelo V2.4 (BirdNET-Analyzer 2.4.0), la versión anterior a la actual. Usamos ejemplos de 2 segundos de cada especie ; el 80 % de las grabaciones para entrenar y el 20 % para evaluar, sin repetir ninguna. Entrenamos dos modelos: uno con las simpátricas, sus parientes alopátricos y el pájaro campana, y otro solo con las simpátricas y el pájaro campana.
 :::
 
-## Discriminar simpátricas + alopátricas {.desempeno .titulo-pequeno visibility="hidden"}
-
-```{r}
-#| fig-width: 9
-#| fig-height: 6.3
-order7 <- c("Ramphastos sulfuratus", "Ramphastos brevis", "Pteroglossus torquatus",
-            "Pteroglossus erythropygius", "Psarocolius montezuma", "Psarocolius guatimozinus",
-            "Procnias tricarunculatus")
-# grey box around the two rows of each pair of sister species (labels included), as the pair
-# boxes of the training diagram, with the name of each group on the right
-pair_y <- c(6.5, 4.5, 2.5)   # rows 7-6, 5-4 and 3-2 (first species at the top)
-pair_lab <- c("Tucanes", "Aracaris", "Oropéndolas")
-conf_box_x <- (-4 + 7.62) / 2; conf_box_w <- 7.62 + 4   # from left of the labels to the last column
-plot_conf("./data/confusion_sympatric_allopatric.csv", order7, text_size = 6.2, draw_side = TRUE) +
-    lapply(pair_y, function(y) box(conf_box_x, y, conf_box_w, 1.9, NA, grey_box, lwd = 2)) +
-    annotate("text", x = 8, y = pair_y, label = pair_lab, hjust = 0, size = 6.2,
-             family = font_family, colour = deck_cols[["texto"]]) +
-    # colour key of the species names, above the matrix
-    annotate("point", x = c(1.6, 4.6), y = 8.05, shape = 15, size = 6.5,
-             colour = type_cols[c("Simpátrica", "Alopátrica")]) +
-    annotate("text", x = c(1.6, 4.6) + 0.3, y = 8.05, label = c("Simpátricas", "Alopátricas"),
-             hjust = 0, size = 6.6, family = font_family, colour = type_cols[c("Simpátrica", "Alopátrica")]) +
-    theme(plot.margin = margin(t = 40, r = 140, b = 5, l = 5),
-          axis.title.y = element_text(margin = margin(r = 28)))   # clear of the pair boxes
-```
-
-::: {.fuente}
-870 vocalizaciones de prueba (no usadas para entrenar)
-:::
-
-::: {.notes}
-**Unos 20 s.** El modelo 1 incluye las siete clases: las tres simpátricas, sus parientes alopátricos y otros pájaros campana. Es el que permite comparar simpátricas y alopátricas. La diagonal es alta: distingue bien las especies; la mayor confusión es entre los dos aracaris.
-:::
-
 ## Semejanza a simpátricas vs alopátricas {.titulo-pequeno}
 
 ```{r}
@@ -1131,13 +1097,11 @@ bias_plot(show_other = FALSE)
 
 <!-- same text as on the next slide (the second line hidden), so that both plots have the same size -->
 <div class="nota-gris">
-<center><span class="texto-medio">Focal: <span class="simp">simpátricas</span> 14 veces más que <span class="alop">alopátricas</span><br><span class="oculto">Otros campanas: solo 1 de 137 heteroespecífica (<span class="alop">alopátrica</span>)</span></span></center>
+<center><span class="texto-medio">Focal: <span class="simp">simpátricas</span> 14 veces más que <span class="alop">alopátricas</span><br><span class="oculto">Otros campanas: grabaciones de prueba (no usadas para entrenar)</span></span></center>
 </div>
 
 ::: {.notes}
 **Hasta 7:00.** El resultado principal, primero en el individuo focal: la gran mayoría de sus clasificaciones heteroespecíficas caen en la especie simpátrica, sobre todo el tucán pico iris y el aracari de collar.
-
-Otros campanas: solo 1 de 137 heteroespecífica (alopátrica)
 :::
 
 ## Semejanza a simpátricas vs alopátricas {.titulo-pequeno}
@@ -1148,28 +1112,11 @@ bias_plot(show_other = TRUE)
 ```
 
 <div class="nota-gris">
-<center><span class="texto-medio">Focal: <span class="simp">simpátricas</span> 14 veces más que <span class="alop">alopátricas</span><br><span>Otros campanas: solo 1 de 137 heteroespecífica (<span class="alop">alopátrica</span>)</span></span></center>
+<center><span class="texto-medio">Focal: <span class="simp">simpátricas</span> 14 veces más que <span class="alop">alopátricas</span><br>Otros campanas: grabaciones de prueba (no usadas para entrenar)</span></span></center>
 </div>
 
 ::: {.notes}
 **Hasta 7:30.** Ahora los otros pájaros campana: sin este sesgo. Cuando el focal se clasifica como otra especie, el 93 % de las veces es la simpátrica (IC 95 %: 91–96 %), unas 14 veces más que su pariente alopátrico; por azar esperaríamos mitad y mitad. Los otros campanas (grabaciones de prueba, no usadas para entrenar) casi nunca se clasifican como otra especie: 1 de 137 grabaciones, y fue como alopátrica. Esto apoya el mimetismo genuino.
-:::
-
-## Discriminar simpátricas {.desempeno .titulo-pequeno visibility="hidden"}
-
-```{r}
-#| fig-width: 5.6
-#| fig-height: 5
-# (figure only as tall as the matrix: the image is stretched to the slide height, so less blank
-# space means a larger matrix)
-order4 <- c("Ramphastos sulfuratus", "Pteroglossus torquatus", "Psarocolius montezuma",
-            "Procnias tricarunculatus")
-plot_conf("./data/confusion_sympatric.csv", order4, text_size = 6.5, draw_w = 1.4, draw_h = 1.15, draw_side = TRUE)
-```
-
-
-::: {.notes}
-**Unos 15 s.** El modelo 2 solo tiene las simpátricas y el pájaro campana, para estimar a cuál de las especies modelo se parece más cada vocalización. También distingue bien las cuatro clases.
 :::
 
 ## Semejanza a simpátricas {.desempeno .titulo-pequeno}
@@ -1206,10 +1153,6 @@ ggplot(sp_bars, aes(x = species, y = prop, fill = bird)) +
     theme(legend.position = "inside", legend.position.inside = c(0.5, 0.9), legend.text = element_text(size = 22),
           axis.text.x = ggtext::element_markdown(size = 22, family = "Source Sans Pro Semibold"))
 ```
-
-::: {.fuente}
-Otros campanas: grabaciones de prueba (no usadas para entrenar)
-:::
 
 ::: {.notes}
 **Hasta 8:05.** Un segundo clasificador, solo con las simpátricas, permite estimar cuánto se parece a cada una. Sobre todo al tucán pico iris, luego al aracari de collar, y muy poco a la oropéndola. En los otros campanas, estas clasificaciones son prácticamente inexistentes.
@@ -1520,3 +1463,54 @@ Dejar esta diapositiva durante las preguntas (3 min). Después vienen las de res
 </ol>
 <div class="ref-volver"><a href="#/agradecimientos-y-recursos">&#8592; Volver a recursos</a></div>
 ```
+
+## Discriminar simpátricas + alopátricas {.desempeno .titulo-pequeno visibility="uncounted"}
+
+```{r}
+#| fig-width: 9
+#| fig-height: 6.3
+order7 <- c("Ramphastos sulfuratus", "Ramphastos brevis", "Pteroglossus torquatus",
+            "Pteroglossus erythropygius", "Psarocolius montezuma", "Psarocolius guatimozinus",
+            "Procnias tricarunculatus")
+# grey box around the two rows of each pair of sister species (labels included), as the pair
+# boxes of the training diagram, with the name of each group on the right
+pair_y <- c(6.5, 4.5, 2.5)   # rows 7-6, 5-4 and 3-2 (first species at the top)
+pair_lab <- c("Tucanes", "Aracaris", "Oropéndolas")
+conf_box_x <- (-4 + 7.62) / 2; conf_box_w <- 7.62 + 4   # from left of the labels to the last column
+plot_conf("./data/confusion_sympatric_allopatric.csv", order7, text_size = 6.2, draw_side = TRUE) +
+    lapply(pair_y, function(y) box(conf_box_x, y, conf_box_w, 1.9, NA, grey_box, lwd = 2)) +
+    annotate("text", x = 8, y = pair_y, label = pair_lab, hjust = 0, size = 6.2,
+             family = font_family, colour = deck_cols[["texto"]]) +
+    # colour key of the species names, above the matrix
+    annotate("point", x = c(1.6, 4.6), y = 8.05, shape = 15, size = 6.5,
+             colour = type_cols[c("Simpátrica", "Alopátrica")]) +
+    annotate("text", x = c(1.6, 4.6) + 0.3, y = 8.05, label = c("Simpátricas", "Alopátricas"),
+             hjust = 0, size = 6.6, family = font_family, colour = type_cols[c("Simpátrica", "Alopátrica")]) +
+    theme(plot.margin = margin(t = 40, r = 140, b = 5, l = 5),
+          axis.title.y = element_text(margin = margin(r = 28)))   # clear of the pair boxes
+```
+
+::: {.fuente}
+870 vocalizaciones de prueba (no usadas para entrenar)
+:::
+
+::: {.notes}
+**Unos 20 s.** El modelo 1 incluye las siete clases: las tres simpátricas, sus parientes alopátricos y otros pájaros campana. Es el que permite comparar simpátricas y alopátricas. La diagonal es alta: distingue bien las especies; la mayor confusión es entre los dos aracaris.
+:::
+
+## Discriminar simpátricas {.desempeno .titulo-pequeno visibility="uncounted"}
+
+```{r}
+#| fig-width: 5.6
+#| fig-height: 5
+# (figure only as tall as the matrix: the image is stretched to the slide height, so less blank
+# space means a larger matrix)
+order4 <- c("Ramphastos sulfuratus", "Pteroglossus torquatus", "Psarocolius montezuma",
+            "Procnias tricarunculatus")
+plot_conf("./data/confusion_sympatric.csv", order4, text_size = 6.5, draw_w = 1.4, draw_h = 1.15, draw_side = TRUE)
+```
+
+
+::: {.notes}
+**Unos 15 s.** El modelo 2 solo tiene las simpátricas y el pájaro campana, para estimar a cuál de las especies modelo se parece más cada vocalización. También distingue bien las cuatro clases.
+:::
