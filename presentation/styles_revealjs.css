@@ -977,3 +977,10 @@
 .reveal .slide .r-stack .bajar-der {
     transform: translateY(6px);
 }
+
+/* phones: reveal.js switches to scroll view, where stretched images got 0px height */
+.reveal-scroll .reveal .slides img.r-stretch {
+  height: auto !important;
+  width: 100%;
+  max-height: none;
+}

@@ -8,8 +8,8 @@ format:
     embed-resources: true
     auto-section: false
     auto-play-media: false
-    dpi: 300
-    fig-dpi: 300
+    dpi: 150
+    fig-dpi: 150
     code-line-numbers: false
     code-block-border-left: true
     slide-number: true
