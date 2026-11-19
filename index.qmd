@@ -18,7 +18,7 @@ The vocalizations of the focal individual were classified mostly as sympatric sp
 ## Main results
 
 ::: {.figure-gallery}
-![Spectrograms of the focal individual (left) and of the model species (center), with a photo of each event (right).](output/mimicry_composite_figure.png)
+![Vocalizations classified as each heterospecific species by the classifier trained with sympatric and allopatric species. The focal bellbird was classified as the sympatric species of each pair (blue) about 14 times more often than as its allopatric relative (purple); other bellbirds (test recordings, not used for training) were almost never classified as another species.](output/sympatric_vs_allopatric_barplot.png)
 :::
 
 ## Reproducibility
