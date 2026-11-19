@@ -3,7 +3,9 @@
 # page and adds a script that turns it into a blob: URL when the deck opens, so the deck
 # stays a single self-contained file (a data: URL cannot be used directly, because
 # reveal.js splits background video sources on commas).
-html_file <- "presentation.html"
+# both decks: Spanish (presentation.html) and English (presentation_en.html); a deck already
+# processed has no data-background-video links left and is left as it is
+for (html_file in c("presentation.html", "presentation_en.html")) {
 if (file.exists(html_file)) {
   html <- readChar(html_file, file.size(html_file), useBytes = TRUE)
   refs <- unique(regmatches(
@@ -84,4 +86,5 @@ if (file.exists(html_file)) {
     )
   }
   writeChar(html, html_file, eos = NULL, useBytes = TRUE)
+}
 }

@@ -1,0 +1,9 @@
+---
+title: "Presentation (English)"
+page-layout: full
+toc: false
+---
+
+<p class="slides-help">Click on the slides and use the arrow keys to move forward, or <a href="presentation/presentation_en.html" target="_blank" rel="noopener">open them in a separate tab</a> to view them full screen (press F). A <a href="presentation.html">Spanish version</a> is also available.</p>
+
+<iframe class="slides" src="presentation/presentation_en.html" title="Presentation (English)" allow="fullscreen; autoplay" allowfullscreen></iframe>

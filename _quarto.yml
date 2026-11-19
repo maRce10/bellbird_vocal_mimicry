@@ -4,10 +4,12 @@ project:
   render:
     - index.qmd
     - presentation.qmd
+    - presentation_en.qmd
     - scripts/birdnet_acoustic_data_prep.qmd
     - scripts/statistical_analysis.qmd
   resources:
     - presentation/presentation.html
+    - presentation/presentation_en.html
 
 execute:
   freeze: auto
@@ -27,8 +29,12 @@ website:
         text: Data preparation
       - href: scripts/statistical_analysis.qmd
         text: Statistical analysis
-      - href: presentation.qmd
-        text: Presentation
+      - text: Presentation
+        menu:
+          - href: presentation_en.qmd
+            text: English
+          - href: presentation.qmd
+            text: Spanish
     right:
       - icon: github
         href: https://github.com/maRce10/bellbird_vocal_mimicry

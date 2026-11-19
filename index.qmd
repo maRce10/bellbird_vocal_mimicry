@@ -13,7 +13,7 @@ The vocalizations of the focal individual were classified mostly as sympatric sp
 
 - **[Data preparation](scripts/birdnet_acoustic_data_prep.qmd)**: annotations, selection tables and export of the data for BirdNET
 - **[Statistical analysis](scripts/statistical_analysis.qmd)**: classifiers, Bayesian models and changes over time
-- **[Presentation](presentation.qmd)**: slides of the talk (in Spanish), with the spectrograms and their sounds
+- **Presentation**: slides of the talk, in [English](presentation_en.qmd) and [Spanish](presentation.qmd), with the spectrograms and their sounds
 
 ## Main results
 
