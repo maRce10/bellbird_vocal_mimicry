@@ -1,0 +1,9 @@
+---
+title: "Presentation"
+page-layout: full
+toc: false
+---
+
+<p class="slides-help">Slides are in Spanish. Click on them and use the arrow keys to move forward, or <a href="presentation/presentation.html" target="_blank" rel="noopener">open them in a separate tab</a> to view them full screen (press F).</p>
+
+<iframe class="slides" src="presentation/presentation.html" title="Presentation" allow="fullscreen; autoplay" allowfullscreen></iframe>
