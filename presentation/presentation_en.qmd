@@ -91,6 +91,8 @@ update_geom_defaults("text", list(family = font_family))
 update_geom_defaults("label", list(family = font_family))
 
 counts <- read.csv("./data/classification_counts.csv")
+# numbers quoted on the result slides (prepare_slide_data.R)
+nums <- read.csv("./data/result_numbers.csv")
 
 # English names
 english_names <- c(
@@ -454,8 +456,8 @@ Kelley et al. 2008; Dalziell et al. 2015
 ```{r}
 #| output: asis
 tr <- read.csv("./data/entrenamiento_modelos.csv")
-n_ex <- setNames(tr$clips_train + tr$clips_test, tr$species)
-n_rec <- setNames(tr$recordings_train + tr$recordings_test, tr$species)
+n_ex <- setNames(tr$clips, tr$species)
+n_rec <- setNames(tr$recordings, tr$species)
 abbr <- function(sp) paste0(substr(sp, 1, 1), ". ", sub(".* ", "", sp))
 
 # example spectrograms (the distribution maps are drawn by the Spanish deck)
@@ -511,7 +513,7 @@ Distribution maps: BirdLife International 2025
 # diagram: BirdNET -> training data of each species (examples and recordings) -> two models.
 # Coordinates in an arbitrary 0-120 x 0-64 box (see presentation.qmd)
 tr <- read.csv("./data/entrenamiento_modelos.csv")
-n_ex <- setNames(tr$clips_train + tr$clips_test, tr$species)
+n_ex <- setNames(tr$clips, tr$species)
 abbr <- function(sp) paste0(substr(sp, 1, 1), ". ", sub(".* ", "", sp))
 
 stage_x <- c(34.5, 89, 128)
@@ -551,8 +553,8 @@ models <- data.frame(x = 97.5, y = c(35.5, 14.5),
     title = c("Discriminate\nsympatric\nand allopatric", "Discriminate\nsympatric"),
     text = c("+ bellbird\n(7 classes)",
              "+ bellbird\n(4 classes)"))
-f1 <- sapply(c("sympatric_and_allopatric/sympatric_and_allopatric", "sympatric/sympatric"), function(f)
-    read.csv(paste0("../data/processed/birdnet_models/", f, "_evaluation.csv"), check.names = FALSE)[1, "F1 Score (opt)"])
+# macro-averaged F1 of the cross-validated predictions
+f1 <- c(tr$macro_f1_sympatric_allopatric[1], tr$macro_f1_sympatric[1])
 models$text <- paste0(models$text, "\nOverall F1: ", round(f1 * 100), "%")
 
 time_y <- 69
@@ -625,7 +627,7 @@ g_models <- list(
              family = font_family, colour = deck_cols[["titulo"]]),
     annotate("text", x = 77, y = models$y[2] - 2.2, vjust = 1, size = 4.2, lineheight = 0.9,
              family = font_family, colour = deck_cols[["texto"]],
-             label = "80% training\n20% testing"),
+             label = "5-fold\ncross-validation"),
     annotate("segment", x = 69.8, xend = 85.6, y = models$y, yend = models$y,
              colour = deck_cols[["titulo"]], linewidth = 1.2, arrow = arrow_)
 )
@@ -683,7 +685,7 @@ cat("\n::: {.r-stack}\n", paste(img_md, collapse = "\n\n"), "\n:::\n", sep = "")
 ```
 
 ::: {.notes}
-**About 40 s.** We retrained BirdNET, a network already trained on thousands of species, with our own classes. We used model V2.4 (BirdNET-Analyzer 2.4.0), the version before the current one. We used 2-second examples of each species, with 80% of the recordings for training and 20% for testing, without repeating any. We trained two models: one with the sympatric species, their allopatric relatives and the bellbird, and another with only the sympatric species and the bellbird.
+**About 40 s.** We retrained BirdNET, a network already trained on thousands of species, with our own classes. We used model V2.4 (BirdNET-Analyzer 2.4.0), the version before the current one. We used 2-second examples of each species, and evaluated them with 5-fold cross-validation: the recordings are split into five groups, and each group is classified by a model trained with the other four, so every vocalization is classified by a model that never heard its recording. We trained two models: one with the sympatric species, their allopatric relatives and the bellbird, and another with only the sympatric species and the bellbird.
 :::
 
 ## Similarity to sympatric vs allopatric species {.titulo-pequeno}
@@ -752,7 +754,7 @@ bias_plot(show_other = FALSE)
 ```
 
 <div class="nota-gris">
-<center><span class="texto-medio">Focal bellbird: <span class="simp">sympatric</span> 14 times more than <span class="alop">allopatric</span><br><span class="oculto">Other bellbirds: test recordings (not used for training)</span></span></center>
+<center><span class="texto-medio">Focal bellbird: <span class="simp">sympatric</span> `r round(nums$focal_sympatric / nums$focal_allopatric)` times more than <span class="alop">allopatric</span><br><span class="oculto">Other bellbirds: classified by models that never heard their recordings</span></span></center>
 </div>
 
 ::: {.notes}
@@ -767,11 +769,11 @@ bias_plot(show_other = TRUE)
 ```
 
 <div class="nota-gris">
-<center><span class="texto-medio">Focal bellbird: <span class="simp">sympatric</span> 14 times more than <span class="alop">allopatric</span><br>Other bellbirds: test recordings (not used for training)</span></span></center>
+<center><span class="texto-medio">Focal bellbird: <span class="simp">sympatric</span> `r round(nums$focal_sympatric / nums$focal_allopatric)` times more than <span class="alop">allopatric</span><br>Other bellbirds: classified by models that never heard their recordings</span></span></center>
 </div>
 
 ::: {.notes}
-**By 7:30.** Now the other bellbirds: no such bias. When the focal bellbird is classified as another species, 93% of the time it is the sympatric one (95% CI: 91–96%), about 14 times more than its allopatric relative; by chance we would expect half and half. The other bellbirds (test recordings, not used for training) are almost never classified as another species: 1 of 137 recordings, and it was as an allopatric one. This supports genuine mimicry.
+**By 7:30.** Now the other bellbirds: no such bias. When the focal bellbird is classified as another species, 95% of the time it is the sympatric one (95% CI: 93–97%), about 16 times more than its allopatric relative (811 vs 50 vocalizations); by chance we would expect half and half. The other bellbirds, each classified by a model that never heard its recording, are almost never classified as another species: 9 of 800 vocalizations. This supports genuine mimicry.
 :::
 
 ## Similarity to sympatric species {.desempeno .titulo-pequeno}
@@ -983,7 +985,7 @@ plot_conf("./data/confusion_sympatric_allopatric.csv", order7, text_size = 6.2, 
 ```
 
 ::: {.fuente}
-870 test vocalizations (not used for training)
+`r num(nums$reference_clips)` vocalizations, 5-fold cross-validation (each classified by a model that never heard its recording)
 :::
 
 ::: {.notes}

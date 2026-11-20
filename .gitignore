@@ -18,7 +18,14 @@ Rplots.pdf
 /scripts/rsconnect/
 
 # too large for GitHub, or not public yet (kept locally only)
-/data/
+/data/**
+# exceptions: small metadata and cross-validation tables needed to rerun the analysis
+!/data/raw/
+!/data/raw/*.csv
+!/data/processed/
+!/data/processed/birdnet_cv/
+!/data/processed/birdnet_cv/folds.csv
+!/data/processed/birdnet_cv/*_predictions_*.csv
 /deprecated/
 /embedding_model/
 /scripts/embedding_model/

@@ -1,18 +1,25 @@
 "pred","Freq","model","bird","total"
-"nocall",537,"sympatric_allopatric","focal",1660
-"Procnias tricarunculatus",571,"sympatric_allopatric","focal",1660
-"Psarocolius montezuma",6,"sympatric_allopatric","focal",1660
-"Pteroglossus erythropygius",28,"sympatric_allopatric","focal",1660
-"Pteroglossus torquatus",122,"sympatric_allopatric","focal",1660
-"Ramphastos brevis",9,"sympatric_allopatric","focal",1660
-"Ramphastos sulfuratus",387,"sympatric_allopatric","focal",1660
-"nocall",4,"sympatric_allopatric","other",137
-"Procnias tricarunculatus",132,"sympatric_allopatric","other",137
-"Ramphastos brevis",1,"sympatric_allopatric","other",137
-"nocall",201,"sympatric","focal",1660
-"Procnias tricarunculatus",632,"sympatric","focal",1660
-"Psarocolius montezuma",33,"sympatric","focal",1660
+"nocall",302,"sympatric_allopatric","focal",1660
+"Procnias tricarunculatus",497,"sympatric_allopatric","focal",1660
+"Psarocolius guatimozinus",1,"sympatric_allopatric","focal",1660
+"Psarocolius montezuma",7,"sympatric_allopatric","focal",1660
+"Pteroglossus erythropygius",43,"sympatric_allopatric","focal",1660
+"Pteroglossus torquatus",161,"sympatric_allopatric","focal",1660
+"Ramphastos brevis",6,"sympatric_allopatric","focal",1660
+"Ramphastos sulfuratus",643,"sympatric_allopatric","focal",1660
+"nocall",30,"sympatric_allopatric","other",800
+"Procnias tricarunculatus",761,"sympatric_allopatric","other",800
+"Psarocolius guatimozinus",1,"sympatric_allopatric","other",800
+"Psarocolius montezuma",4,"sympatric_allopatric","other",800
+"Pteroglossus erythropygius",1,"sympatric_allopatric","other",800
+"Ramphastos brevis",1,"sympatric_allopatric","other",800
+"Ramphastos sulfuratus",2,"sympatric_allopatric","other",800
+"nocall",292,"sympatric","focal",1660
+"Procnias tricarunculatus",473,"sympatric","focal",1660
+"Psarocolius montezuma",14,"sympatric","focal",1660
 "Pteroglossus torquatus",214,"sympatric","focal",1660
-"Ramphastos sulfuratus",580,"sympatric","focal",1660
-"nocall",1,"sympatric","other",137
-"Procnias tricarunculatus",136,"sympatric","other",137
+"Ramphastos sulfuratus",667,"sympatric","focal",1660
+"nocall",46,"sympatric","other",800
+"Procnias tricarunculatus",748,"sympatric","other",800
+"Psarocolius montezuma",2,"sympatric","other",800
+"Ramphastos sulfuratus",4,"sympatric","other",800

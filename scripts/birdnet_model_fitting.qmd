@@ -37,295 +37,63 @@ library(knitr)
 
 theme_set(theme_classic(base_size = 14))
 
+source("scripts/birdnet_cv_functions.R")
+
 models <- c("sympatric_and_allopatric", "sympatric")
 model_labels <- c(sympatric_and_allopatric = "Sympatric + allopatric", sympatric = "Sympatric only")
-sympatric_spp <- c("Procnias tricarunculatus", "Psarocolius montezuma",
-                   "Pteroglossus torquatus", "Ramphastos sulfuratus")
-
-cli_dir <- "./data/processed/birdnet_models_cli"
-gui_dir <- "./data/processed/birdnet_models"
-class_dir <- "./data/processed/birdnet_classification_outputs_cli"
+configs <- c("A", "B", "C")
+short <- function(x) ifelse(x == "Unassigned", x, sub("^(\\w)\\w+ ", "\\1. ", x))
 ```
 
 # Purpose
 
-- Train the two custom BirdNET classifiers from code, instead of the BirdNET-Analyzer GUI, so the fitting is reproducible
-- Fix the random seed (123) so that re-running the script gives the same models
-- Evaluate the models on the held-out test clips and classify the focal bellbird clips
-- Choose the hyperparameters and classification thresholds by 5-fold cross-validation grouped by recording, and classify the focal bellbird clips with an ensemble of the cross-validated models ([Cross-validation](#cross-validation))
+- Train the two custom BirdNET classifiers from code, with a fixed random seed (123), so the fitting is reproducible
+- Choose the hyperparameters and the classification thresholds, and estimate the performance of the classifiers, by 5-fold cross-validation grouped by recording
+- Classify the vocalizations of other bellbirds and of the focal bellbird with models that never heard them
 
 The two classifiers are:
 
-- **Sympatric + allopatric**: the three sympatric species the bellbird could have imitated (Keel-billed Toucan, Collared Aracari and Montezuma Oropendola), their closely related allopatric species (Yellow-throated Toucan, Pale-mandibled Aracari and Baudo Oropendola) and the Three-wattled Bellbird
+- **Sympatric + allopatric**: the three sympatric species the bellbird could have imitated (Keel-billed Toucan, Collared Aracari and Montezuma Oropendola), their closely related allopatric species (Choco Toucan, Pale-mandibled Aracari and Chestnut-headed Oropendola) and the Three-wattled Bellbird
 - **Sympatric only**: the three sympatric species and the Three-wattled Bellbird
 
-# Training and test data
+# Data
 
-Clips were exported in [Data preparation](birdnet_acoustic_data_prep.qmd): an 80/20 split stratified by species, keeping all clips from a recording in the same set. Clips of other bellbirds in the test set were not used for training.
+2 s clips exported in [Data preparation](birdnet_acoustic_data_prep.qmd). All clips are used for cross-validation; each recording contributes several clips.
 
-```{r data counts}
-count_clips <- function(split) {
-    spp <- list.dirs(file.path("./data/processed/birdnet_data", split), recursive = FALSE, full.names = FALSE)
-    setNames(sapply(spp, function(s) length(list.files(file.path("./data/processed/birdnet_data", split, s)))), spp)
-}
-train_n <- count_clips("train_data")
-test_n <- count_clips("test_data")
-
-clips <- data.frame(Species = names(train_n),
-                    Type = ifelse(names(train_n) %in% sympatric_spp, "Sympatric", "Allopatric"),
-                    Train = as.integer(train_n), Test = as.integer(test_n[names(train_n)]))
+```{r data}
+folds <- read.csv(file.path(cv_dir, "folds.csv"))
+clips <- aggregate(clip ~ species, folds, length)
+names(clips) <- c("Species", "Clips")
+clips$Recordings <- as.integer(tapply(folds$recording, folds$species, function(x) length(unique(x)))[clips$Species])
+clips$Type <- ifelse(clips$Species %in% sympatric_spp, "Sympatric", "Allopatric")
 clips$Type[clips$Species == "Procnias tricarunculatus"] <- "Bellbird"
-clips
+clips[, c("Species", "Type", "Recordings", "Clips")]
 ```
 
-# Fitting
+# Cross-validation design
 
-This section and the next two use the original 80/20 train/test split, as in the GUI. These models were trained without a bandpass filter (0–15 kHz) and classified with a 400–12,000 Hz bandpass, as the GUI runs; the [cross-validation](#cross-validation) uses 400–12,000 Hz in both steps and supersedes them.
+- The clips were split into 5 folds with a stratified group k-fold (seed 123): all clips of a recording fall in the same fold, and the folds are balanced by species. Five folds keep about 3 recordings of the species with fewest recordings (*P. guatimozinus*, 15) in each fold
+- For each fold, the classifiers were trained on the other 4 folds and classified the held-out fold, so every clip has one out-of-fold prediction from a model that never heard its recording
+- Training stops early on a random 20% of the training clips (the held-out fold is not used for training in any way), up to 50 epochs; the weights of the best epoch are kept
+- Training and classification use a 400–12,000 Hz bandpass, BirdNET-Analyzer v2.4 and seed 123
+- Three hyperparameter configurations were compared for each classifier:
+    - **A**: 2,048 hidden units, dropout 0.5, batch size 64, learning rate 0.001, mixup and focal loss (α 0.75, γ 0.5)
+    - **B**: 256 hidden units, dropout 0.5, batch size 16, learning rate 0.002, mixup and upsampling of the rare classes to 33% of the largest one
+    - **C**: BirdNET defaults: linear classifier (no hidden layer), no dropout, batch size 32, learning rate 0.0001, no mixup, upsampling or focal loss
+- The selection rule was set before looking at the results: the configuration with the highest macro-averaged AUPRC on the out-of-fold predictions (threshold-free), judged separately for each classifier
+- Per-species thresholds are the ones that maximize F1 on the out-of-fold predictions (0.05 steps); a clip is assigned to the species with the highest confidence if it reaches that species' threshold, otherwise it is left unassigned
 
-Both models are trained with [`scripts/train_birdnet_models.sh`](https://github.com/maRce10/bellbird_vocal_mimicry/blob/master/scripts/train_birdnet_models.sh), which calls BirdNET-Analyzer (v2.4) through [`scripts/train_birdnet.py`](https://github.com/maRce10/bellbird_vocal_mimicry/blob/master/scripts/train_birdnet.py). That wrapper seeds Python, NumPy and TensorFlow (weights, shuffling, dropout, mixup), turns on deterministic TensorFlow operations and saves the training history. Training takes about a minute per model on a GPU. Re-running the training with the same seed gives the same evaluation and stops at the same epoch; per-epoch metrics differ only by floating-point rounding on the GPU (< 10<sup>-7</sup>).
-
-```{bash train models}
-#| eval: false
-#| code-fold: false
-
-# from the project root
-bash scripts/train_birdnet_models.sh train      # fit both models (seed 123)
-bash scripts/train_birdnet_models.sh classify   # classify test and focal bellbird clips
-```
-
-## Hyperparameters
-
-The same hyperparameters used in the GUI (read from the `_Params.csv` file each training run writes). Up to 50 epochs were allowed, with early stopping on the validation loss; the weights of the best epoch are kept.
-
-```{r hyperparameters}
-params <- do.call(rbind, lapply(models, function(m) {
-    p <- read.csv(file.path(cli_dir, m, paste0(m, "_Params.csv")), check.names = FALSE)
-    data.frame(Model = model_labels[[m]], p, check.names = FALSE)
-}))
-keep <- c("Model", "Hidden units", "Dropout", "Batchsize", "Learning rate", "Upsamling mode",
-          "Upsamling ratio", "use mixup", "use focal loss", "focal loss alpha", "focal loss gamma")
-p <- params[, keep]
-names(p) <- c("Model", "Hidden units", "Dropout", "Batch size", "Learning rate", "Upsampling",
-              "Upsampling ratio", "Mixup", "Focal loss", "Focal α", "Focal γ")
-p$`Focal α`[p$`Focal loss` == "False"] <- NA
-p$`Focal γ`[p$`Focal loss` == "False"] <- NA
-t(p) |> as.data.frame() |> setNames(p$Model) |> (\(x) x[-1, ])()
-```
-
-## Training history
-
-The test clips are used as validation data, so the curves show performance on the held-out clips. The dashed line marks the epoch whose weights were kept (lowest validation loss).
-
-```{r training history}
-#| fig-width: 10
-#| fig-height: 6
-
-hist <- do.call(rbind, lapply(models, function(m) {
-    h <- read.csv(file.path(cli_dir, m, paste0(m, "_history.csv")))
-    data.frame(model = model_labels[[m]],
-               epoch = rep(h$epoch, 4),
-               metric = rep(c("Loss", "Loss", "AUPRC", "AUPRC"), each = nrow(h)),
-               set = rep(c("Training", "Validation", "Training", "Validation"), each = nrow(h)),
-               value = c(h$loss, h$val_loss, h$AUPRC, h$val_AUPRC))
-}))
-hist$model <- factor(hist$model, levels = model_labels)
-best <- do.call(rbind, lapply(split(hist[hist$metric == "Loss" & hist$set == "Validation", ], ~ model),
-                              function(d) d[which.min(d$value), c("model", "epoch")]))
-
-ggplot(hist, aes(epoch, value, color = set)) +
-    geom_vline(data = best, aes(xintercept = epoch), linetype = 2, color = "grey50") +
-    geom_line(linewidth = 1) + geom_point(size = 1.5) +
-    facet_grid(metric ~ model, scales = "free") +
-    scale_color_viridis_d(end = 0.7, name = "") +
-    labs(x = "Epoch", y = "") +
-    theme(legend.position = "top", strip.background = element_blank())
-```
-
-# Model performance
-
-## Evaluation on the test clips
-
-BirdNET's evaluation on the test clips. "Opt" columns use the optimal threshold for each species (the one that maximizes F1), which is the threshold used to accept a classification downstream.
-
-```{r evaluation}
-#| results: asis
-
-read_eval <- function(dir, m) {
-    e <- read.csv(file.path(dir, m, paste0(m, "_evaluation.csv")), check.names = FALSE)
-    e[, c("Class", "Precision (opt)", "Recall (opt)", "F1 Score (opt)", "AUPRC", "AUROC", "Optimal Threshold", "Samples")]
-}
-for (m in models) {
-    cat("\n\n###", model_labels[[m]], "\n\n")
-    print(kable(read_eval(cli_dir, m), digits = 3, row.names = FALSE))
-}
-```
-
-## Comparison with the GUI models
-
-Overall (macro-averaged) performance of the models trained here and of the models trained earlier with the GUI, with the same data and hyperparameters.
-
-```{r gui comparison}
-cmp <- do.call(rbind, lapply(models, function(m) {
-    do.call(rbind, lapply(c("Code (seed 123)", "GUI"), function(f) {
-        e <- read_eval(if (f == "GUI") gui_dir else cli_dir, m)[1, ]
-        data.frame(Model = model_labels[[m]], Fitting = f,
-                   e[, c("Precision (opt)", "Recall (opt)", "F1 Score (opt)", "AUPRC", "AUROC")],
-                   check.names = FALSE)
-    }))
-}))
-rownames(cmp) <- NULL
-kable(cmp, digits = 3)
-```
-
-## Confusion matrices
-
-Classification of each test clip with the trained models (2 s versions of the clips, as in the analysis), using the same settings as in the analysis: the species with the highest confidence is assigned when it reaches its optimal threshold, otherwise the clip is left unassigned.
-
-```{r read classifications}
-read_tables <- function(path) {
-    files <- list.files(path, pattern = "selection.table.txt$", recursive = TRUE, full.names = TRUE)
-    tabs <- lapply(files, function(f) {
-        x <- read.delim(f, check.names = FALSE)
-        clip <- sub("\\.BirdNET\\.selection\\.table\\.txt$", "", basename(f))
-        if (nrow(x) == 0) return(data.frame(clip = clip, species = "nocall", confidence = NA))
-        data.frame(clip = clip, species = x$`Common Name`, confidence = x$Confidence)
-    })
-    do.call(rbind, tabs)
-}
-
-# one classification per clip: best species above its optimal threshold, else unassigned
-assign_clip <- function(tab, m) {
-    thr <- read_eval(cli_dir, m)
-    thr <- setNames(thr$`Optimal Threshold`, thr$Class)
-    tab$ok <- !is.na(tab$confidence) & tab$species %in% names(thr) &
-        tab$confidence >= thr[tab$species]
-    tab <- tab[order(tab$clip, !tab$ok, -tab$confidence), ]
-    tab <- tab[!duplicated(tab$clip), ]
-    tab$predicted <- ifelse(tab$ok, tab$species, "Unassigned")
-    tab[, c("clip", "predicted", "confidence")]
-}
-
-test_class <- lapply(setNames(models, models), function(m) {
-    x <- assign_clip(read_tables(file.path(class_dir, "sympatrics_and_allopatrics_2s", m)), m)
-    # true species from the test folder each clip came from
-    truth <- unlist(lapply(names(test_n), function(s)
-        setNames(rep(s, test_n[[s]]), sub("\\.wav$", "", list.files(file.path("./data/processed/birdnet_data/test_data", s))))))
-    x$true <- truth[sub("\\.wav$", "", x$clip)]
-    x <- x[!is.na(x$true), ]   # keep test clips only
-    if (m == "sympatric") x <- x[x$true %in% sympatric_spp, ]
-    x
-})
-```
-
-```{r confusion matrices}
-#| fig-width: 12
-#| fig-height: 6
-
-conf <- do.call(rbind, lapply(models, function(m) {
-    x <- test_class[[m]]
-    tb <- as.data.frame(table(true = x$true, predicted = x$predicted))
-    tb$prop <- tb$Freq / ave(tb$Freq, tb$true, FUN = sum)
-    tb$model <- model_labels[[m]]
-    tb
-}))
-conf$model <- factor(conf$model, levels = model_labels)
-short <- function(x) ifelse(x == "Unassigned", x, sub("^(\\w)\\w+ ", "\\1. ", x))
-conf$true <- short(as.character(conf$true))
-conf$predicted <- short(as.character(conf$predicted))
-
-ggplot(conf, aes(predicted, true, fill = prop)) +
-    geom_tile(color = "white") +
-    geom_text(aes(label = ifelse(Freq > 0, Freq, "")), size = 3.5,
-              color = ifelse(conf$prop > 0.5, "black", "white")) +
-    facet_wrap(~ model, scales = "free") +
-    scale_fill_viridis_c(option = "mako", limits = c(0, 1), name = "Proportion\nof true class") +
-    labs(x = "Predicted", y = "True") +
-    theme(axis.text.x = element_text(angle = 45, hjust = 1, face = "italic"),
-          axis.text.y = element_text(face = "italic"), strip.background = element_blank())
-```
-
-```{r accuracy}
-acc <- sapply(test_class, function(x) mean(x$predicted == x$true))
-data.frame(Model = model_labels[names(acc)], `Test clips` = sapply(test_class, nrow),
-           `Correctly classified` = sprintf("%.1f%%", 100 * acc), check.names = FALSE, row.names = NULL)
-```
-
-# Focal bellbird classification
-
-Classification of the `r length(list.files("./data/processed/birdnet_data/mimic_bellbird"))` focal bellbird clips with the models trained here, compared with the classification obtained with the GUI models (as used in the [statistical analysis](statistical_analysis.qmd)).
-
-```{r focal classification}
-gui_class_dirs <- c(sympatric_and_allopatric = "./data/processed/birdnet_classification_outputs/mimic_bellbird/sympatrics_and_allopatrics_model",
-                    sympatric = "./data/processed/birdnet_classification_outputs/mimic_bellbird/sympatric_model")
-
-focal <- do.call(rbind, lapply(models, function(m) {
-    code <- assign_clip(read_tables(file.path(class_dir, "mimic_bellbird", m)), m)
-    gui <- read_tables(gui_class_dirs[[m]])
-    gui_thr <- read_eval(gui_dir, m)
-    gui_thr <- setNames(gui_thr$`Optimal Threshold`, gui_thr$Class)
-    gui$ok <- !is.na(gui$confidence) & gui$species %in% names(gui_thr) & gui$confidence >= gui_thr[gui$species]
-    gui <- gui[order(gui$clip, !gui$ok, -gui$confidence), ]
-    gui <- gui[!duplicated(gui$clip), ]
-    gui$predicted <- ifelse(gui$ok, gui$species, "Unassigned")
-    rbind(data.frame(model = model_labels[[m]], fitting = "Code (seed 123)", predicted = code$predicted),
-          data.frame(model = model_labels[[m]], fitting = "GUI", predicted = gui$predicted))
-}))
-
-focal_tab <- as.data.frame.matrix(table(paste(focal$model, "|", focal$predicted), focal$fitting))
-focal_tab <- cbind(Model = sub(" \\|.*", "", rownames(focal_tab)),
-                   `Classified as` = sub(".*\\| ", "", rownames(focal_tab)), focal_tab)
-rownames(focal_tab) <- NULL
-focal_tab
-```
-
-```{r focal plot}
-#| fig-width: 10
-#| fig-height: 5
-
-fp <- as.data.frame(table(model = focal$model, fitting = focal$fitting, predicted = focal$predicted))
-fp <- fp[fp$Freq > 0, ]
-fp$model <- factor(fp$model, levels = model_labels)
-fp$predicted <- short(as.character(fp$predicted))
-
-ggplot(fp, aes(predicted, Freq, fill = fitting)) +
-    geom_col(position = position_dodge(width = 0.8), width = 0.75) +
-    geom_text(aes(label = Freq), position = position_dodge(width = 0.8), vjust = -0.3, size = 3.5) +
-    facet_wrap(~ model, scales = "free_x") +
-    scale_fill_viridis_d(begin = 0.3, end = 0.8, name = "") +
-    labs(x = "", y = "Focal bellbird clips") +
-    theme(legend.position = "top", axis.text.x = element_text(angle = 45, hjust = 1, face = "italic"),
-          strip.background = element_blank())
-```
-
-
-# Cross-validation {#cross-validation}
-
-BirdNET validates on a single holdout: the test clips are used to stop training, to choose the per-species thresholds and to report performance. To get estimates that do not depend on one split, and thresholds not tuned on the clips used to score them, the models were cross-validated with [`scripts/birdnet_cv.sh`](https://github.com/maRce10/bellbird_vocal_mimicry/blob/master/scripts/birdnet_cv.sh).
-
-## Design
-
-- All train and test clips were pooled and split into 5 folds with a stratified group k-fold (seed 123): all clips of a recording fall in the same fold, and the folds are balanced by species. Five folds keep about 3 recordings of the species with fewest recordings (*P. guatimozinus*, 15) in each fold
-- For each fold, the models were trained on the other 4 folds and classified the held-out fold, so every clip has one out-of-fold prediction from a model that never saw its recording
-- Training stops early on a random 20% of the training clips (the held-out fold is not used for training in any way). Training and classification use a 400–12,000 Hz bandpass; seed 123
-- Three hyperparameter configurations were compared for each model:
-    - **A**: the settings of the GUI sympatric + allopatric model (2,048 hidden units, focal loss, mixup)
-    - **B**: the settings of the GUI sympatric-only model (256 hidden units, upsampling, mixup)
-    - **C**: BirdNET defaults (linear classifier, no dropout, mixup, upsampling or focal loss)
-- The selection rule was set before looking at the results: the configuration with the highest macro-averaged AUPRC on the out-of-fold predictions (threshold-free), judged separately for each model
-- Per-species thresholds are the ones that maximize F1 on the out-of-fold predictions; a clip is assigned to the species with the highest confidence if it reaches that species' threshold, otherwise it is left unassigned
+The whole pipeline is run with [`scripts/birdnet_cv.sh`](https://github.com/maRce10/bellbird_vocal_mimicry/blob/master/scripts/birdnet_cv.sh). It assigns the folds with [`scripts/birdnet_cv_folds.py`](https://github.com/maRce10/bellbird_vocal_mimicry/blob/master/scripts/birdnet_cv_folds.py) and trains through [`scripts/train_birdnet.py`](https://github.com/maRce10/bellbird_vocal_mimicry/blob/master/scripts/train_birdnet.py), a wrapper of BirdNET-Analyzer that seeds Python, NumPy and TensorFlow (weights, shuffling, dropout, mixup), turns on deterministic TensorFlow operations and saves the training history. Re-running the training with the same seed gives the same models up to floating-point rounding.
 
 ```{bash cv}
 #| eval: false
 #| code-fold: false
 
-bash scripts/birdnet_cv.sh all   # folds, 30 trainings (3 configurations x 2 models x 5 folds) and classifications
+# from the project root
+bash scripts/birdnet_cv.sh all   # folds, 30 trainings (3 configurations x 2 classifiers x 5 folds) and classifications
 ```
 
 ```{r cv setup}
-source("scripts/birdnet_cv_functions.R")
-folds <- read.csv(file.path(cv_dir, "folds.csv"))
-configs <- c("A", "B", "C")
-
 cv_res <- list()
 for (cf in configs) for (m in models) {
     sc <- oof_scores(cf, m, folds)
@@ -345,7 +113,7 @@ rec <- tapply(paste(folds$species, folds$recording), folds$fold, function(x) len
 rbind(ft, Recordings = as.integer(rec), `Total clips` = colSums(ft))
 ```
 
-## Comparison of configurations
+# Comparison of configurations
 
 Out-of-fold macro-averaged AUPRC and F1 (thresholds from the out-of-fold predictions). Error bars: standard deviation across folds.
 
@@ -379,9 +147,35 @@ ggplot(long, aes(Configuration, value, color = Configuration)) +
 kable(cmp_cv[order(cmp_cv$Model), ], digits = 3, row.names = FALSE)
 ```
 
-Selected configurations: **`r best_cfg[["sympatric_and_allopatric"]]`** for the sympatric + allopatric model and **`r best_cfg[["sympatric"]]`** for the sympatric-only model. The differences between configurations are small compared with the variation across folds.
+Selected configurations: **`r best_cfg[["sympatric_and_allopatric"]]`** for the sympatric + allopatric classifier and **`r best_cfg[["sympatric"]]`** for the sympatric-only classifier. The differences between configurations are small compared with the variation across folds.
 
-## Performance of the selected configurations
+## Training history of the selected configurations
+
+Each line is one fold. Validation: the random 20% of the training clips used for early stopping.
+
+```{r training history}
+#| fig-width: 10
+#| fig-height: 6
+
+hist <- do.call(rbind, lapply(models, function(m) do.call(rbind, lapply(1:5, function(k) {
+    h <- read.csv(file.path(cv_dir, "models", best_cfg[[m]], m, paste0("fold_", k), paste0(m, "_history.csv")))
+    data.frame(model = paste0(model_labels[[m]], " (", best_cfg[[m]], ")"), fold = k,
+               epoch = rep(h$epoch, 4),
+               metric = rep(c("Loss", "Loss", "AUPRC", "AUPRC"), each = nrow(h)),
+               set = rep(c("Training", "Validation", "Training", "Validation"), each = nrow(h)),
+               value = c(h$loss, h$val_loss, h$AUPRC, h$val_AUPRC))
+}))))
+hist$model <- factor(hist$model, levels = unique(hist$model))
+
+ggplot(hist, aes(epoch, value, color = set, group = interaction(set, fold))) +
+    geom_line(linewidth = 0.8, alpha = 0.8) +
+    facet_grid(metric ~ model, scales = "free") +
+    scale_color_viridis_d(end = 0.7, name = "") +
+    labs(x = "Epoch", y = "") +
+    theme(legend.position = "top", strip.background = element_blank())
+```
+
+# Performance of the selected configurations
 
 ```{r cv per species}
 #| results: asis
@@ -390,10 +184,12 @@ for (m in models) {
     r <- cv_res[[best_cfg[[m]]]][[m]]
     ps <- r$metrics$per_species
     names(ps) <- c("Species", "Precision", "Recall", "F1", "AUPRC", "Threshold", "Clips")
-    cat("\n\n###", model_labels[[m]], "(configuration", best_cfg[[m]], ")\n\n")
+    cat("\n\n##", model_labels[[m]], "(configuration", best_cfg[[m]], ")\n\n")
     print(kable(ps, digits = 3, row.names = FALSE))
 }
 ```
+
+## Confusion matrices
 
 ```{r cv confusion}
 #| fig-width: 12
@@ -423,7 +219,7 @@ ggplot(cv_conf, aes(predicted, true, fill = prop)) +
 
 ## Other bellbirds
 
-With cross-validation every recording of other bellbirds gets an out-of-fold prediction, so the control uses all `r sum(folds$species == "Procnias tricarunculatus")` clips instead of the `r test_n[["Procnias tricarunculatus"]]` test clips.
+Every recording of other bellbirds gets an out-of-fold prediction, so the control uses all `r sum(folds$species == "Procnias tricarunculatus")` bellbird clips.
 
 ```{r cv other bellbirds}
 ob <- do.call(rbind, lapply(models, function(m) {
@@ -434,9 +230,9 @@ ob <- do.call(rbind, lapply(models, function(m) {
 ob
 ```
 
-## Focal bellbird classification (ensemble)
+# Focal bellbird classification
 
-The focal bellbird clips are classified with the 5 fold models of the selected configuration (A for sympatric + allopatric, C for sympatric only): the confidence of each species is averaged across the 5 models and the out-of-fold thresholds are applied. The predictions are saved in `data/processed/birdnet_cv/focal_predictions_<model>.csv`.
+The `r length(list.files("./data/processed/birdnet_data/mimic_bellbird"))` focal bellbird clips are classified with the 5 fold models of the selected configuration: the confidence of each species is averaged across the 5 models (ensemble) and the out-of-fold thresholds are applied. The predictions are saved in `data/processed/birdnet_cv/focal_predictions_<model>.csv`, and the out-of-fold predictions of the reference clips in `data/processed/birdnet_cv/oof_predictions_<model>.csv`; both are used in the [statistical analysis](statistical_analysis_cv.qmd).
 
 ```{r cv focal}
 focal_cv <- do.call(rbind, lapply(models, function(m) {
@@ -444,46 +240,50 @@ focal_cv <- do.call(rbind, lapply(models, function(m) {
     en <- ensemble_scores(cf, m)
     en$predicted <- assign_species(en, model_spp[[m]], cv_res[[cf]][[m]]$thr)
     write.csv(en, file.path(cv_dir, paste0("focal_predictions_", m, ".csv")), row.names = FALSE)
-    data.frame(model = model_labels[[m]], fitting = "Cross-validated ensemble", predicted = en$predicted)
+    data.frame(model = model_labels[[m]], predicted = en$predicted)
 }))
 
-# out-of-fold predictions of the training clips, for downstream use
+# out-of-fold predictions of the reference clips, for downstream use
 for (m in models) {
     r <- cv_res[[best_cfg[[m]]]][[m]]
     write.csv(data.frame(r$scores, predicted = r$metrics$pred, check.names = FALSE),
               file.path(cv_dir, paste0("oof_predictions_", m, ".csv")), row.names = FALSE)
 }
 
-fc <- rbind(focal_cv, focal[focal$fitting == "GUI", ])
-fc_tab <- as.data.frame.matrix(table(paste(fc$model, "|", fc$predicted), fc$fitting))
-fc_tab <- cbind(Model = sub(" \\|.*", "", rownames(fc_tab)), `Classified as` = sub(".*\\| ", "", rownames(fc_tab)), fc_tab)
-rownames(fc_tab) <- NULL
-fc_tab
+fc_tab <- as.data.frame(table(focal_cv$model, focal_cv$predicted))
+names(fc_tab) <- c("Model", "Classified as", "Clips")
+fc_tab[fc_tab$Clips > 0, ]
+```
+
+```{r focal plot}
+#| fig-width: 10
+#| fig-height: 5
+
+fp <- fc_tab[fc_tab$Clips > 0, ]
+fp$`Classified as` <- short(as.character(fp$`Classified as`))
+ggplot(fp, aes(`Classified as`, Clips, fill = Model)) +
+    geom_col(position = position_dodge(preserve = "single"), width = 0.75) +
+    scale_fill_viridis_d(end = 0.6, name = "") +
+    labs(x = "", y = "Focal bellbird clips") +
+    theme(axis.text.x = element_text(angle = 45, hjust = 1, face = "italic"), legend.position = "top")
 ```
 
 ```{r cv sympatric share}
 sa <- focal_cv[focal_cv$model == model_labels[["sympatric_and_allopatric"]], "predicted"]
-gui_sa <- focal[focal$model == model_labels[["sympatric_and_allopatric"]] & focal$fitting == "GUI", "predicted"]
 allo <- c("Psarocolius guatimozinus", "Pteroglossus erythropygius", "Ramphastos brevis")
 symp_het <- setdiff(sympatric_spp, "Procnias tricarunculatus")
-share <- function(x) c(Sympatric = sum(x %in% symp_het), Allopatric = sum(x %in% allo))
-sh <- rbind(`Cross-validated ensemble` = share(sa), GUI = share(gui_sa))
-data.frame(sh, `% sympatric` = round(100 * sh[, 1] / rowSums(sh), 1),
-           `Sympatric : allopatric` = round(sh[, 1] / sh[, 2], 1), check.names = FALSE)
+sh <- c(Sympatric = sum(sa %in% symp_het), Allopatric = sum(sa %in% allo))
+data.frame(t(sh), `% sympatric` = round(100 * sh[[1]] / sum(sh), 1),
+           `Sympatric : allopatric` = round(sh[[1]] / sh[[2]], 1), check.names = FALSE)
 ```
 
 # Takeaways
 
-```{r takeaways}
-#| echo: false
-ov <- function(d, m) read_eval(d, m)[1, "F1 Score (opt)"]
-```
-
 - Both classifiers were trained from code with a fixed seed (123); re-running gives the same models up to floating-point rounding
-- Single split (as the GUI): overall F1 on the test clips sympatric + allopatric `r sprintf("%.3f", ov(cli_dir, "sympatric_and_allopatric"))` (GUI: `r sprintf("%.3f", ov(gui_dir, "sympatric_and_allopatric"))`); sympatric only `r sprintf("%.3f", ov(cli_dir, "sympatric"))` (GUI: `r sprintf("%.3f", ov(gui_dir, "sympatric"))`). Thresholds tuned on these clips move a lot between fits
-- 5-fold cross-validation grouped by recording selected configuration `r best_cfg[["sympatric_and_allopatric"]]` for the sympatric + allopatric model (out-of-fold macro AUPRC `r sprintf("%.3f", cmp_cv$AUPRC[cmp_cv$Selected == "✓" & cmp_cv$Model == model_labels[["sympatric_and_allopatric"]]])`) and `r best_cfg[["sympatric"]]` for the sympatric-only model (`r sprintf("%.3f", cmp_cv$AUPRC[cmp_cv$Selected == "✓" & cmp_cv$Model == model_labels[["sympatric"]]])`); differences between configurations are within fold-to-fold variation
-- The weakest classes are the aracaris and the oropendolas in the sympatric + allopatric model, where each is confused with its close relative (*P. torquatus* with *P. erythropygius* above all); in the sympatric-only model all species have F1 > 0.92
-- With the cross-validated ensemble, `r sh[1, 1]` focal bellbird clips were classified as a sympatric species and `r sh[1, 2]` as an allopatric one (`r round(sh[1, 1] / sh[1, 2], 1)` : 1; GUI: `r round(sh[2, 1] / sh[2, 2], 1)` : 1)
+- 5-fold cross-validation grouped by recording selected configuration `r best_cfg[["sympatric_and_allopatric"]]` for the sympatric + allopatric classifier (out-of-fold macro AUPRC `r sprintf("%.3f", cmp_cv$AUPRC[cmp_cv$Selected == "✓" & cmp_cv$Model == model_labels[["sympatric_and_allopatric"]]])`) and `r best_cfg[["sympatric"]]` for the sympatric-only classifier (`r sprintf("%.3f", cmp_cv$AUPRC[cmp_cv$Selected == "✓" & cmp_cv$Model == model_labels[["sympatric"]]])`); differences between configurations are within fold-to-fold variation
+- The weakest classes are the aracaris and the oropendolas in the sympatric + allopatric classifier, where each is confused with its close relative (*P. torquatus* with *P. erythropygius* above all); in the sympatric-only classifier all species have F1 > 0.92
+- Other bellbirds were rarely classified as another species (out-of-fold predictions of all their recordings)
+- `r sh[["Sympatric"]]` focal bellbird clips were classified as a sympatric species and `r sh[["Allopatric"]]` as an allopatric one (`r round(sh[["Sympatric"]] / sh[["Allopatric"]], 1)` : 1)
 
 <!-- '---' adds a gray vertical line -->
 

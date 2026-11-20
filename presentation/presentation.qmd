@@ -97,6 +97,8 @@ update_geom_defaults("text", list(family = font_family))
 update_geom_defaults("label", list(family = font_family))
 
 counts <- read.csv("./data/classification_counts.csv")
+# numbers quoted on the result slides (prepare_slide_data.R)
+nums <- read.csv("./data/result_numbers.csv")
 
 # Spanish names shown on the slides
 spanish_names <- c(
@@ -612,11 +614,11 @@ Al avanzar (→) suenan los dos en secuencia: campana focal y oropéndola de Moc
 <div></div>
 <div></div>
 <div></div>
-<div class="flujo-caja flujo-modelo"><div><b>Fragmentos de 2 s</b><span>80 % entrenar · 20 % evaluar, separados por grabación</span></div></div>
+<div class="flujo-caja flujo-modelo"><div><b>Fragmentos de 2 s</b><span>Validación cruzada de 5 grupos, separados por grabación</span></div></div>
 <div class="flujo-flecha">&#8594;</div>
 <div class="flujo-caja flujo-modelo"><img src="images/logo_birdnet_web.png" alt=""><div><b>Reentrenar BirdNET</b><span>Modelo 1: 7 clases · modelo 2: 4 clases</span></div></div>
 <div class="flujo-flecha">&#8594;</div>
-<div class="flujo-caja flujo-modelo"><div><b>Desempeño</b><span>F1 en las grabaciones de prueba</span></div></div>
+<div class="flujo-caja flujo-modelo"><div><b>Desempeño</b><span>F1 en grabaciones que el modelo no escuchó</span></div></div>
 </div>
 
 ```
@@ -725,8 +727,8 @@ Kelley et al. 2008; Dalziell et al. 2015
 ```{r}
 #| output: asis
 tr <- read.csv("./data/entrenamiento_modelos.csv")
-n_ex <- setNames(tr$clips_train + tr$clips_test, tr$species)
-n_rec <- setNames(tr$recordings_train + tr$recordings_test, tr$species)
+n_ex <- setNames(tr$clips, tr$species)
+n_rec <- setNames(tr$recordings, tr$species)
 abbr <- function(sp) paste0(substr(sp, 1, 1), ". ", sub(".* ", "", sp))
 # distribution maps redrawn with the colour key when the (licensed, local) BirdLife data are
 # available; otherwise the maps already in images/ are used
@@ -790,15 +792,14 @@ Mapas de distribución: BirdLife International 2025
 
 ```{r}
 #| output: asis
-# fig-alt of the diagram: "Diagrama del entrenamiento: BirdNET se reentrena con las vocalizaciones de las siete especies (ejemplos y grabaciones de cada una), separadas en 80 % de las grabaciones para entrenar y 20 % para evaluar, para obtener dos modelos: simpátricas, alopátricas y pájaro campana, y solo simpátricas y pájaro campana"
+# fig-alt of the diagram: "Diagrama del entrenamiento: BirdNET se reentrena con las vocalizaciones de las siete especies (ejemplos y grabaciones de cada una), evaluadas con validación cruzada de 5 grupos, para obtener dos modelos: simpátricas, alopátricas y pájaro campana, y solo simpátricas y pájaro campana"
 # diagram: BirdNET -> training data of each species (examples and recordings) -> two models.
 # Coordinates in an arbitrary 0-120 x 0-64 box; drawings, colours and numbers come from the
 # global settings and data/entrenamiento_modelos.csv
 tr <- read.csv("./data/entrenamiento_modelos.csv")
-n_ex <- setNames(tr$clips_train + tr$clips_test, tr$species)
-n_rec <- setNames(tr$recordings_train + tr$recordings_test, tr$species)
+n_ex <- setNames(tr$clips, tr$species)
+n_rec <- setNames(tr$recordings, tr$species)
 abbr <- function(sp) paste0(substr(sp, 1, 1), ". ", sub(".* ", "", sp))
-pct_rec <- round(100 * sum(tr$recordings_train) / sum(tr$recordings_train + tr$recordings_test))
 
 # layout, left to right, under a timeline of the three stages: (1) the examples of each species
 # (pairs of sister species in grey boxes, then the bellbird), (2) BirdNET retrained into the two
@@ -847,10 +848,9 @@ models <- data.frame(x = 97.5, y = c(35.5, 14.5),
     title = c("Discriminar\nsimpátricas\ny alopátricas", "Discriminar\nsimpátricas"),
     text = c("+ pájaro campana\n(7 clases)",
              "+ pájaro campana\n(4 clases)"))
-# overall performance on the test recordings: macro-averaged F1 at the optimal thresholds
-# (BirdNET-Analyzer evaluation files)
-f1 <- sapply(c("sympatric_and_allopatric/sympatric_and_allopatric", "sympatric/sympatric"), function(f)
-    read.csv(paste0("../data/processed/birdnet_models/", f, "_evaluation.csv"), check.names = FALSE)[1, "F1 Score (opt)"])
+# overall performance: macro-averaged F1 of the cross-validated predictions, at the
+# out-of-fold optimal thresholds (prepare_slide_data.R)
+f1 <- c(tr$macro_f1_sympatric_allopatric[1], tr$macro_f1_sympatric[1])
 models$text <- paste0(models$text, "\nF1 global: ", round(f1 * 100), " %")
 
 # the diagram is drawn as four layers of the same size, stacked on the slide: the timeline
@@ -946,7 +946,7 @@ g_models <- list(
     # split of the recordings, under the lower arrow
     annotate("text", x = 77, y = models$y[2] - 2.2, vjust = 1, size = 4.2, lineheight = 0.9,
              family = font_family, colour = deck_cols[["texto"]],
-             label = "80 % entrenar\n20 % evaluar"),
+             label = "validación cruzada\n(5 grupos)"),
     annotate("segment", x = 69.8, xend = 85.6, y = models$y, yend = models$y,
              colour = deck_cols[["titulo"]], linewidth = 1.2, arrow = arrow_)
 )
@@ -1021,7 +1021,7 @@ cat("\n::: {.r-stack}\n", paste(img_md, collapse = "\n\n"), "\n:::\n", sep = "")
 ```
 
 ::: {.notes}
-**Unos 40 s.** Reentrenamos BirdNET, una red ya entrenada con miles de especies, con nuestras propias clases. Usamos el modelo V2.4 (BirdNET-Analyzer 2.4.0), la versión anterior a la actual. Usamos ejemplos de 2 segundos de cada especie ; el 80 % de las grabaciones para entrenar y el 20 % para evaluar, sin repetir ninguna. Entrenamos dos modelos: uno con las simpátricas, sus parientes alopátricos y el pájaro campana, y otro solo con las simpátricas y el pájaro campana.
+**Unos 40 s.** Reentrenamos BirdNET, una red ya entrenada con miles de especies, con nuestras propias clases. Usamos el modelo V2.4 (BirdNET-Analyzer 2.4.0), la versión anterior a la actual. Usamos ejemplos de 2 segundos de cada especie ; los evaluamos con validación cruzada de 5 grupos: las grabaciones se separan en cinco grupos y cada grupo se clasifica con un modelo entrenado con los otros cuatro, así que cada vocalización la clasifica un modelo que nunca escuchó su grabación. Entrenamos dos modelos: uno con las simpátricas, sus parientes alopátricos y el pájaro campana, y otro solo con las simpátricas y el pájaro campana.
 :::
 
 ## Semejanza a simpátricas vs alopátricas {.titulo-pequeno}
@@ -1097,7 +1097,7 @@ bias_plot(show_other = FALSE)
 
 <!-- same text as on the next slide (the second line hidden), so that both plots have the same size -->
 <div class="nota-gris">
-<center><span class="texto-medio">Campana focal: <span class="simp">simpátricas</span> 14 veces más que <span class="alop">alopátricas</span><br><span class="oculto">Otros campanas: grabaciones de prueba (no usadas para entrenar)</span></span></center>
+<center><span class="texto-medio">Campana focal: <span class="simp">simpátricas</span> `r round(nums$focal_sympatric / nums$focal_allopatric)` veces más que <span class="alop">alopátricas</span><br><span class="oculto">Otros campanas: clasificados por modelos que nunca escucharon sus grabaciones</span></span></center>
 </div>
 
 ::: {.notes}
@@ -1112,11 +1112,11 @@ bias_plot(show_other = TRUE)
 ```
 
 <div class="nota-gris">
-<center><span class="texto-medio">Campana focal: <span class="simp">simpátricas</span> 14 veces más que <span class="alop">alopátricas</span><br>Otros campanas: grabaciones de prueba (no usadas para entrenar)</span></span></center>
+<center><span class="texto-medio">Campana focal: <span class="simp">simpátricas</span> `r round(nums$focal_sympatric / nums$focal_allopatric)` veces más que <span class="alop">alopátricas</span><br>Otros campanas: clasificados por modelos que nunca escucharon sus grabaciones</span></span></center>
 </div>
 
 ::: {.notes}
-**Hasta 7:30.** Ahora los otros pájaros campana: sin este sesgo. Cuando la campana focal se clasifica como otra especie, el 93 % de las veces es la simpátrica (IC 95 %: 91–96 %), unas 14 veces más que su pariente alopátrico; por azar esperaríamos mitad y mitad. Los otros campanas (grabaciones de prueba, no usadas para entrenar) casi nunca se clasifican como otra especie: 1 de 137 grabaciones, y fue como alopátrica. Esto apoya el mimetismo genuino.
+**Hasta 7:30.** Ahora los otros pájaros campana: sin este sesgo. Cuando la campana focal se clasifica como otra especie, el 95 % de las veces es la simpátrica (IC 95 %: 93–97 %), unas 16 veces más que su pariente alopátrico (811 vs. 50 vocalizaciones); por azar esperaríamos mitad y mitad. Los otros campanas, cada uno clasificado por un modelo que nunca escuchó su grabación, casi nunca se clasifican como otra especie: 9 de 800 vocalizaciones. Esto apoya el mimetismo genuino.
 :::
 
 ## Semejanza a simpátricas {.desempeno .titulo-pequeno}
@@ -1346,18 +1346,18 @@ En ambos casos, adquirir sonidos heteroespecíficos **implica aprendizaje vocal*
 
 ::: {.column width="50%"}
 <div class="cifra-texto"><b>Campana focal</b></div>
-<div class="cifra">0,93</div>
+<div class="cifra">0,95</div>
 <div class="cifra-texto">probabilidad de clasificarse como <span class="simp">simpátrica</span></div>
 <br>
-<div class="cifra-texto">Chances <span class="simp">simpátrica</span> vs. <span class="alop">alopátrica</span>:<br><b>12,68</b> (IC 95%: 4,07–39,49)</div>
+<div class="cifra-texto">Chances <span class="simp">simpátrica</span> vs. <span class="alop">alopátrica</span>:<br><b>19,67</b> (IC 95%: 13,21–34,46)</div>
 :::
 
 ::: {.column width="50%"}
 <div class="cifra-texto"><b>Otros campanas</b></div>
-<div class="cifra">0,44</div>
+<div class="cifra">0,77</div>
 <div class="cifra-texto">probabilidad de clasificarse como <span class="simp">simpátrica</span></div>
 <br>
-<div class="cifra-texto">Chances <span class="simp">simpátrica</span> vs. <span class="alop">alopátrica</span>:<br><b>0,80</b> (IC 95%: 0,27–2,44)</div>
+<div class="cifra-texto">Chances <span class="simp">simpátrica</span> vs. <span class="alop">alopátrica</span>:<br><b>3,28</b> (IC 95%: 0,66–20,14)</div>
 :::
 
 ::::
@@ -1491,7 +1491,7 @@ plot_conf("./data/confusion_sympatric_allopatric.csv", order7, text_size = 6.2, 
 ```
 
 ::: {.fuente}
-870 vocalizaciones de prueba (no usadas para entrenar)
+`r formatC(nums$reference_clips, big.mark = " ", format = "d")` vocalizaciones, validación cruzada de 5 grupos (cada una clasificada por un modelo que nunca escuchó su grabación)
 :::
 
 ::: {.notes}

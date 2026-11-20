@@ -1,10 +1,9 @@
-# Builds the data, spectrogram panels, photos and audio clips used by
-# presentation.qmd. Run once from the project root (only re-run if inputs change):
+# Builds the spectrogram panels, photos and audio clips used by presentation.qmd (the
+# classification data of the result slides are built by prepare_slide_data.R).
+# Run once from the project root (only re-run if inputs change):
 #   Rscript presentation/prepare_slide_assets.R
 # Needs ffmpeg on the PATH. The deck itself only reads the files written here.
 
-library(Rraven)
-library(brms)
 library(ggplot2)
 library(patchwork)
 library(seewave)
@@ -13,158 +12,7 @@ library(viridis)
 
 out_data <- "presentation/data"
 out_img <- "presentation/images"
-cls <- "data/processed/birdnet_classification_outputs/"
 fig_dir <- "data/raw/figure_audios&pictures/"
-
-# ---- classifier outputs -----------------------------------------------------
-
-eval_sa <- read.csv(
-  "data/processed/birdnet_models/sympatric_and_allopatric/sympatric_and_allopatric_evaluation.csv"
-)
-eval_s <- read.csv(
-  "data/processed/birdnet_models/sympatric/sympatric_evaluation.csv"
-)
-
-# read a Raven folder; calls under the class's optimal threshold become "nocall"
-read_class <- function(path, evaluation) {
-  x <- imp_raven(
-    path = path,
-    all.data = TRUE,
-    warbler.format = TRUE,
-    pb = FALSE
-  )
-  pred <- x$`Common Name`
-  thr <- evaluation$Optimal.Threshold[match(pred, evaluation$Class)]
-  pred[is.na(thr) | x$Confidence < thr] <- "nocall"
-  data.frame(
-    file = basename(gsub("\\\\", "/", x$sound.files, useBytes = TRUE)),
-    pred = pred,
-    conf = x$Confidence
-  )
-}
-
-# BirdNET classifies each clip in several windows (1 to 5). Keep one window per clip: the
-# most confident window that passed its class threshold, or "nocall" if none did
-one_per_clip <- function(x) {
-  x <- x[order(x$file, x$pred == "nocall", -x$conf), ]
-  x[!duplicated(x$file), ]
-}
-
-est <- readRDS(
-  "data/processed/extended_selection_table_sympatric_and_allopatric_species.RDS"
-)
-add_source <- function(x) {
-  x$source <- as.character(est$source)[match(
-    x$file,
-    paste0(est$sound.files, ".wav")
-  )]
-  x
-}
-test_files <- basename(list.files(
-  "data/processed/birdnet_data/test_data/",
-  recursive = TRUE
-))
-
-focal_sa <- read_class(
-  paste0(cls, "mimic_bellbird/sympatrics_and_allopatrics_model/"),
-  eval_sa
-)
-focal_s <- read_class(paste0(cls, "mimic_bellbird/sympatric_model/"), eval_s)
-refs_sa <- add_source(read_class(
-  paste0(cls, "sympatrics_and_allopactrics/sympatrics_and_allopatrics_model/"),
-  eval_sa
-))
-refs_s <- add_source(read_class(
-  paste0(cls, "sympatrics/sympatrics_model/"),
-  eval_s
-))
-
-# other bellbirds: held-out (test) clips only. Most clips in other_bellbirds/ (and in the
-# reference set) were used to train the models, so they are classified as bellbird by
-# construction and would exaggerate the focal vs others contrast
-other_sa <- refs_sa[
-  refs_sa$source %in% "Procnias tricarunculatus" & refs_sa$file %in% test_files,
-]
-other_s <- refs_s[
-  refs_s$source %in% "Procnias tricarunculatus" & refs_s$file %in% test_files,
-]
-
-tab <- function(x, model, bird) {
-  x <- one_per_clip(x)
-  d <- as.data.frame(table(pred = x$pred), stringsAsFactors = FALSE)
-  d$model <- model
-  d$bird <- bird
-  d$total <- sum(d$Freq)
-  d
-}
-counts <- rbind(
-  tab(focal_sa, "sympatric_allopatric", "focal"),
-  tab(other_sa, "sympatric_allopatric", "other"),
-  tab(focal_s, "sympatric", "focal"),
-  tab(other_s, "sympatric", "other")
-)
-write.csv(
-  counts,
-  file.path(out_data, "classification_counts.csv"),
-  row.names = FALSE
-)
-
-# confusion matrices over calls above threshold, held-out (test) clips only, as in manuscript
-# Figs. 2 and 4 (the training clips would overstate the performance)
-confusion <- function(x) {
-  x <- one_per_clip(x)
-  x <- x[x$pred != "nocall" & !is.na(x$source) & x$source %in% x$pred, ]
-  d <- as.data.frame(
-    table(reference = x$source, predicted = x$pred),
-    stringsAsFactors = FALSE
-  )
-  d$proportion <- d$Freq / ave(d$Freq, d$reference, FUN = sum)
-  d
-}
-write.csv(
-  confusion(refs_sa[refs_sa$file %in% test_files, ]),
-  file.path(out_data, "confusion_sympatric_allopatric.csv"),
-  row.names = FALSE
-)
-write.csv(
-  confusion(refs_s[refs_s$file %in% test_files, ]),
-  file.path(out_data, "confusion_sympatric.csv"),
-  row.names = FALSE
-)
-
-# ---- change through time ----------------------------------------------------
-
-mod <- readRDS("data/processed/brms_model_prop_pred_mimicry_olre.rds")
-points <- data.frame(
-  julian_day = mod$data$julian_day,
-  species = as.character(mod$data$pred_common_name),
-  n = mod$data$orig.sound.files,
-  total = mod$data$total
-)
-points$prop <- points$n / points$total
-points$date <- as.Date(points$julian_day - 1, origin = "2020-01-01")
-write.csv(points, file.path(out_data, "temporal_points.csv"), row.names = FALSE)
-
-grid <- expand.grid(
-  julian_day = seq(
-    min(points$julian_day),
-    max(points$julian_day),
-    length.out = 100
-  ),
-  pred_common_name = unique(points$species),
-  stringsAsFactors = FALSE
-)
-grid$total <- 100 # so that the expected count / 100 is a proportion
-# category effects only, averaging over the observation-level (overdispersion) effect
-grid$prop <- colMeans(posterior_epred(
-  mod,
-  newdata = grid,
-  re_formula = ~ (1 + scale(julian_day) | pred_common_name)
-)) /
-  100
-grid$date <- as.Date(grid$julian_day - 1, origin = "2020-01-01")
-names(grid)[names(grid) == "pred_common_name"] <- "species"
-write.csv(grid, file.path(out_data, "temporal_curves.csv"), row.names = FALSE)
 
 # ---- spectrogram clips (same settings as the composite figure, scripts/test.qmd) ----
 
@@ -384,44 +232,3 @@ for (nm in names(src)) {
       0
   )
 }
-
-# ---- training data of the classifiers -----------------------------------------
-# recordings and 2 s clips per species used to train and test BirdNET (80/20 split by
-# recording), and the F1 score of each class at its optimal threshold in each model
-count_split <- function(split) {
-  d <- file.path("data/processed/birdnet_data", split)
-  do.call(
-    rbind,
-    lapply(list.dirs(d, recursive = FALSE), function(p) {
-      f <- list.files(p, pattern = "\\.wav$")
-      data.frame(
-        species = basename(p),
-        clips = length(f),
-        recordings = length(unique(sub("\\.wav_[0-9]+\\.wav$", "", f)))
-      )
-    })
-  )
-}
-train <- count_split("train_data")
-test <- count_split("test_data")
-training <- merge(train, test, by = "species", suffixes = c("_train", "_test"))
-f1 <- function(model) {
-  e <- read.csv(
-    file.path(
-      "data/processed/birdnet_models",
-      model,
-      paste0(model, "_evaluation.csv")
-    ),
-    check.names = FALSE
-  )
-  setNames(e[["F1 Score (opt)"]], e$Class)
-}
-training$f1_sympatric_allopatric <- f1("sympatric_and_allopatric")[
-  training$species
-]
-training$f1_sympatric <- f1("sympatric")[training$species]
-write.csv(
-  training,
-  file.path("presentation/data", "entrenamiento_modelos.csv"),
-  row.names = FALSE
-)

@@ -1,8 +1,8 @@
-"species","clips_train","recordings_train","clips_test","recordings_test","f1_sympatric_allopatric","f1_sympatric"
-"Procnias tricarunculatus",663,48,137,11,0.9852,0.9889
-"Psarocolius guatimozinus",359,12,51,3,0.9515,NA
-"Psarocolius montezuma",750,34,65,8,0.9538,0.9924
-"Pteroglossus erythropygius",652,36,214,9,0.9271,NA
-"Pteroglossus torquatus",409,30,53,7,0.7244,0.9905
-"Ramphastos brevis",623,29,185,7,0.9892,NA
-"Ramphastos sulfuratus",1040,22,316,5,0.9873,0.9937
+"species","clips","recordings","f1_sympatric_allopatric","macro_f1_sympatric_allopatric","f1_sympatric","macro_f1_sympatric"
+"Procnias tricarunculatus",800,59,0.950062421972534,0.821839098581528,0.949238578680203,0.946525691650062
+"Psarocolius guatimozinus",410,15,0.726872246696035,0.821839098581528,NA,0.946525691650062
+"Psarocolius montezuma",815,42,0.760709010339734,0.821839098581528,0.951234958834705,0.946525691650062
+"Pteroglossus erythropygius",866,45,0.809001731102135,0.821839098581528,NA,0.946525691650062
+"Pteroglossus torquatus",462,35,0.626190476190476,0.821839098581528,0.928974069898534,0.946525691650062
+"Ramphastos brevis",808,36,0.932225063938619,0.821839098581528,NA,0.946525691650062
+"Ramphastos sulfuratus",1356,27,0.947812739831159,0.821839098581528,0.956655159186805,0.946525691650062

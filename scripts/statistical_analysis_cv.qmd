@@ -1,5 +1,5 @@
 ---
-title: Statistical analysis with cross-validated classifiers
+title: Statistical analysis
 subtitle: Bellbird mimicry
 author: <a href="https://marce10.github.io/">Marcelo Araya-Salas</a>
 date: "`r Sys.Date()`"
@@ -78,10 +78,10 @@ ci <- function(x, digits = 2) paste0(round(median(x), digits), " [95% UI: ",
 
 # Purpose {.unnumbered}
 
-- Repeat the analyses of the [statistical analysis](statistical_analysis.qmd) with the cross-validated BirdNET classifiers of the [model fitting](birdnet_model_fitting.qmd#cross-validation) report, instead of the classifiers trained in the BirdNET-Analyzer GUI
-- Compare the estimates obtained with both sets of classifiers
+- Test whether the vocalizations of the focal bellbird are classified more often as the sympatric species it could have imitated than as their allopatric relatives, and more often than the vocalizations of other bellbirds
+- Test whether the classifications of the focal bellbird changed over time
 
-The fits are saved in `data/processed/cv_fits/`. The original analysis and its fits are not modified.
+Classifications come from the cross-validated BirdNET classifiers of the [model fitting](birdnet_model_fitting.qmd) report. The fits are saved in `data/processed/cv_fits/`.
 
 # Cross-validated classifiers
 
@@ -90,7 +90,7 @@ The fits are saved in `data/processed/cv_fits/`. The original analysis and its f
 - All training and test clips were pooled and split into 5 folds grouped by recording (all clips of a recording in the same fold) and stratified by species, seed 123
 - For each fold, the classifiers were trained on the other 4 folds (early stopping on a random 20% of the training clips) and classified the held-out fold, so every clip has a prediction from a model that never heard its recording
 - Training and classification used a 400–12,000 Hz bandpass
-- Three hyperparameter configurations were compared: **A**, the settings of the GUI sympatric + allopatric model (2,048 hidden units, focal loss, mixup); **B**, the settings of the GUI sympatric-only model (256 hidden units, upsampling, mixup); and **C**, BirdNET defaults (linear classifier)
+- Three hyperparameter configurations were compared: **A** (2,048 hidden units, focal loss, mixup); **B** (256 hidden units, upsampling, mixup); and **C**, BirdNET defaults (linear classifier)
 - Selection rule, set before seeing the results: the highest out-of-fold macro-averaged AUPRC, separately for each classifier
 - Per-species thresholds maximize F1 on the out-of-fold predictions. A clip is assigned to its highest-confidence species if it reaches that species' threshold, otherwise it is unassigned
 - The focal bellbird clips are classified by the 5 fold models of the selected configuration: confidences are averaged across models (ensemble) and the out-of-fold thresholds are applied
@@ -103,11 +103,15 @@ The fits are saved in `data/processed/cv_fits/`. The original analysis and its f
 
 folds <- read.csv(file.path(cv_dir, "folds.csv"))
 
+# thresholds and out-of-fold predictions of every configuration, for the robustness check
+cfg_thr <- list(); cfg_pred <- list()
 cmp <- do.call(rbind, lapply(c("A", "B", "C"), function(cf) do.call(rbind, lapply(models, function(m) {
     sc <- oof_scores(cf, m, folds)
     spp <- model_spp[[m]]
     thr <- optimal_thresholds(sc, spp)
+    cfg_thr[[cf]][[m]] <<- thr
     mt <- cv_metrics(sc, spp, thr)
+    cfg_pred[[cf]][[m]] <<- data.frame(clip = sc$clip, true = sc$true, predicted = mt$pred)
     fm <- fold_metrics(sc, spp, thr)
     data.frame(Classifier = model_labels[[m]], Configuration = cf,
                AUPRC = mt$macro[["AUPRC"]], `AUPRC SD` = sd(fm$AUPRC),
@@ -181,7 +185,7 @@ ggplot(cm, aes(Predicted, True, fill = Proportion)) +
 
 Is a heterospecific classification of the focal bellbird more often the sympatric species (a possible model) than its closely related allopatric relative (which it could never have heard)?
 
-Other bellbirds are the out-of-fold predictions of all bellbird clips used to train the classifiers (`r sum(oof$sympatric_and_allopatric$true == "Procnias tricarunculatus")` clips), instead of the `r length(list.files("./data/processed/birdnet_data/test_data/Procnias tricarunculatus"))` test clips of the original analysis.
+Other bellbirds are the out-of-fold predictions of all bellbird clips used to train the classifiers (`r sum(oof$sympatric_and_allopatric$true == "Procnias tricarunculatus")` clips). Each was classified by a model that never heard its recording.
 
 ```{r symp allo data}
 est <- readRDS("./data/processed/extended_selection_table_sympatric_and_allopatric_species.RDS")
@@ -232,7 +236,7 @@ ggplot(cnt, aes(genus, Proportion, fill = type)) +
 
 ## Focal bellbird
 
-As in the original analysis: the probability that a heterospecific classification of the focal bellbird is the sympatric species rather than the allopatric one (0.5 if both were equally likely by chance), with the recording as a random effect.
+The probability that a heterospecific classification of the focal bellbird is the sympatric species rather than the allopatric one (0.5 if both were equally likely by chance), with the recording as a random effect.
 
 ```{r symp allo focal model}
 d1 <- bb_sa[bb_sa$predicted_sp %in% c(heterosp_sympatric, allopatric_spp), ]
@@ -262,7 +266,7 @@ custom_ppc(mod1)
 
 ## Focal vs other bellbirds
 
-With the out-of-fold predictions, `r sum(d1$vocalizing_type == "others")` clips of other bellbirds were classified as one of these species, so the focal vs others contrast can now be estimated (the original analysis had 1 clip and could not).
+With the out-of-fold predictions, `r sum(d1$vocalizing_type == "others")` clips of other bellbirds were classified as one of these species, which allows estimating the focal vs others contrast.
 
 ```{r symp allo contrast model}
 priors1b <- c(prior(normal(0, 1.5), class = "Intercept"), prior(normal(0, 2), class = "b"),
@@ -310,7 +314,7 @@ or1b <- exp(post1b$b_vocalizing_typefocal)
 
 # Only sympatric species
 
-Is the focal bellbird classified as a heterospecific (instead of its own species) more often than other bellbirds? Unassigned clips are excluded, as in the original analysis.
+Is the focal bellbird classified as a heterospecific (instead of its own species) more often than other bellbirds? Unassigned clips are excluded.
 
 ```{r symp data}
 bb_s <- build("sympatric")
@@ -357,13 +361,13 @@ p_others2 <- as.numeric(posterior_epred(mod2, newdata = data.frame(vocalizing_ty
 #### Summary
 
 - `r sum(d2$vocalizing_type == "focal" & d2$prediction_type == 1)` of `r sum(d2$vocalizing_type == "focal")` assigned focal bellbird vocalizations were classified as a sympatric model species (predicted probability `r ci(p_focal2)`), against `r sum(d2$vocalizing_type == "others" & d2$prediction_type == 1)` of `r sum(d2$vocalizing_type == "others")` vocalizations of other bellbirds (`r ci(p_others2, 3)`)
-- Odds ratio focal vs other bellbirds: `r ci(or2, 0)`. Unlike the original analysis, other bellbirds have a few heterospecific classifications, so the odds ratio is estimated from the data instead of being bounded by the prior
+- Odds ratio focal vs other bellbirds: `r ci(or2, 0)`
 
 :::
 
 # Mimicry through time
 
-Daily proportions of the focal bellbird vocalizations assigned to each category by the cross-validated sympatric-only classifier. As in the original analysis, Montezuma Oropendola (`r sum(focal_pred$sympatric$predicted == "Psarocolius montezuma")` clips) is not modeled. The original analysis used the GUI predictions without thresholds; here clips below their species' threshold are unassigned.
+Daily proportions of the focal bellbird vocalizations assigned to each category by the cross-validated sympatric-only classifier. Montezuma Oropendola (`r sum(focal_pred$sympatric$predicted == "Psarocolius montezuma")` clips) is not modeled. Clips below their species' threshold are unassigned.
 
 ```{r time data}
 rec_info <- read.table("./data/raw/Recording_dates_.csv", header = TRUE, sep = ";")
@@ -392,7 +396,7 @@ dat$obs <- factor(seq_len(nrow(dat)))
 kable(aggregate(n ~ pred_common_name, dat, sum), col.names = c("Category", "Clips"))
 ```
 
-Same model as the original analysis: binomial, Julian day with intercepts and slopes varying by category, and an observation-level random effect for overdispersion.
+Binomial model: Julian day with intercepts and slopes varying by category, and an observation-level random effect for overdispersion.
 
 ```{r time model}
 priors3 <- c(prior(normal(0, 2.5), class = "Intercept"), prior(normal(0, 1), class = "b"),
@@ -455,42 +459,85 @@ ggplot(dat[dat$prop > 0, ], aes(date, prop, fill = pred_common_name, color = pre
     theme(axis.text.x = element_text(angle = 45, vjust = 0.5))
 ```
 
-# Comparison with the GUI classifiers
+::: {.alert .alert-info}
 
-Estimates from the original analysis (fits in `data/processed/`) and from the cross-validated classifiers.
+#### Summary
 
-```{r comparison}
-gui1 <- readRDS("./data/processed/mimicry_prob_by_simpatry_focal_model.RDS")
-gui2 <- readRDS("./data/processed/mimicry_simpatric_only_model_recording_re.RDS")
-gui3 <- readRDS("./data/processed/brms_model_prop_pred_mimicry_olre.rds")
+- The proportion of focal bellbird vocalizations classified as its own species increased over time (slope `r round(sl3$Slope[sl3$Category == "Three-wattled Bellbird"], 2)` [95% UI: `r round(sl3[["2.5%"]][sl3$Category == "Three-wattled Bellbird"], 2)`–`r round(sl3[["97.5%"]][sl3$Category == "Three-wattled Bellbird"], 2)`])
+- The proportions classified as Keel-billed Toucan and Collared Aracari tended to decrease, but their intervals include zero; unassigned vocalizations showed no trend
 
-p_gui1 <- plogis(as_draws_df(gui1)$b_Intercept)
-or_gui2 <- exp(as_draws_df(gui2)$b_vocalizing_typefocal)
-p_gui2 <- as.numeric(posterior_epred(gui2, newdata = data.frame(vocalizing_type = "focal", recording = NA), re_formula = NA))
+:::
 
-row <- function(what, gui, cv, digits = 2) data.frame(Estimate = what, GUI = ci(gui, digits), `Cross-validated` = ci(cv, digits), check.names = FALSE)
-comp <- rbind(
-    row("P(sympatric | heterospecific), focal", p_gui1, p_focal1),
-    row("Sympatric : allopatric odds, focal", p_gui1 / (1 - p_gui1), ratio_focal1, 1),
-    row("P(heterospecific), focal (sympatric only)", p_gui2, p_focal2),
-    row("Odds ratio focal vs others (sympatric only)", or_gui2, or2, 0)
-)
-comp <- rbind(comp, data.frame(Estimate = "Focal clips: sympatric vs allopatric",
-    GUI = paste(sum(gui1$data$mimic_type == 1), "vs", sum(gui1$data$mimic_type == 0)),`Cross-validated` = paste(sum(d1$vocalizing_type == "focal" & d1$mimic_type == 1), "vs",
-                                                 sum(d1$vocalizing_type == "focal" & d1$mimic_type == 0)), check.names = FALSE))
-kable(comp)
+# Robustness to the hyperparameter configuration
 
-sl_gui <- slopes(gui3)
-sl <- merge(sl_gui, sl3, by = "Category", suffixes = c(" GUI", " CV"))
-kable(sl, digits = 3, caption = "Temporal slopes by category (log-odds per SD of Julian day)")
+The main results use the selected configuration of each classifier. To check that they do not depend on that choice, the focal bellbird clips were also classified with the 5 fold models of every other configuration (ensemble, with that configuration's out-of-fold thresholds), and the two main models were refitted for each configuration. Other bellbirds are the out-of-fold predictions of each configuration.
+
+```{r robustness data}
+rob <- do.call(rbind, lapply(c("A", "B", "C"), function(cf) do.call(rbind, lapply(models, function(m) {
+    en <- ensemble_scores(cf, m)
+    fp <- assign_species(en, model_spp[[m]], cfg_thr[[cf]][[m]])
+    op <- cfg_pred[[cf]][[m]]
+    op <- op[op$true == "Procnias tricarunculatus", ]
+    rbind(data.frame(config = cf, model = m, clip = en$clip, predicted = fp, vocalizing_type = "focal",
+                     recording = focal_meta$recording[match(en$clip, focal_meta$clip)]),
+          data.frame(config = cf, model = m, clip = op$clip, predicted = op$predicted, vocalizing_type = "others",
+                     recording = recording_of(op$clip)))
+}))))
+rob$vocalizing_type <- factor(rob$vocalizing_type, levels = c("others", "focal"))
+```
+
+```{r robustness models}
+rob_fits <- lapply(setNames(c("A", "B", "C"), c("A", "B", "C")), function(cf) {
+    d <- rob[rob$config == cf & rob$model == "sympatric_and_allopatric" &
+             rob$predicted %in% c(heterosp_sympatric, allopatric_spp) & rob$vocalizing_type == "focal", ]
+    d$mimic_type <- as.integer(d$predicted %in% heterosp_sympatric)
+    f1 <- brm(mimic_type ~ 1 + (1 | recording), data = d, family = bernoulli(), prior = priors1,
+              chains = chains, iter = iter, cores = cores, control = list(adapt_delta = 0.99), seed = 123,
+              file = file.path(fit_dir, paste0("robustness_sympatric_allopatric_focal_", cf)), file_refit = "on_change")
+    d2 <- rob[rob$config == cf & rob$model == "sympatric" & rob$predicted != "Unassigned", ]
+    d2$prediction_type <- as.integer(d2$predicted != "Procnias tricarunculatus")
+    f2 <- brm(prediction_type ~ vocalizing_type + (1 | recording), data = d2, family = bernoulli(), prior = priors2,
+              chains = chains, iter = iter, cores = cores, control = list(adapt_delta = 0.999, max_treedepth = 15),
+              seed = 123, file = file.path(fit_dir, paste0("robustness_sympatric_only_", cf)), file_refit = "on_change")
+    list(sa = f1, s = f2, d = d, d2 = d2)
+})
+```
+
+```{r robustness table}
+rob_tab <- do.call(rbind, lapply(names(rob_fits), function(cf) {
+    r <- rob_fits[[cf]]
+    p <- plogis(as_draws_df(r$sa)$b_Intercept)
+    or <- exp(as_draws_df(r$s)$b_vocalizing_typefocal)
+    ob <- rob[rob$config == cf & rob$model == "sympatric_and_allopatric" & rob$vocalizing_type == "others", ]
+    data.frame(
+        Configuration = paste0(cf, ifelse(cf == best_cfg[["sympatric_and_allopatric"]], " (selected, sympatric + allopatric)", ""),
+                               ifelse(cf == best_cfg[["sympatric"]], " (selected, sympatric only)", "")),
+        `Focal: sympatric vs allopatric clips` = paste(sum(r$d$mimic_type == 1), "vs", sum(r$d$mimic_type == 0)),
+        `P(sympatric | heterospecific), focal` = ci(p),
+        `Sympatric : allopatric odds, focal` = ci(p / (1 - p), 1),
+        `Other bellbirds classified as heterospecific` = paste(sum(ob$predicted %in% c(heterosp_sympatric, allopatric_spp)), "of", nrow(ob)),
+        `Odds ratio focal vs others (sympatric only)` = ci(or, 0),
+        check.names = FALSE)
+}))
+kable(rob_tab)
+```
+
+```{r robustness diagnostics}
+diag_tab <- do.call(rbind, lapply(names(rob_fits), function(cf) do.call(rbind, lapply(c("sa", "s"), function(k) {
+    f <- rob_fits[[cf]][[k]]
+    np <- nuts_params(f)
+    data.frame(Configuration = cf, Model = c(sa = "Sympatric vs allopatric (focal)", s = "Sympatric only (focal vs others)")[[k]],
+               `Max Rhat` = round(max(rhat(f), na.rm = TRUE), 3),
+               `Divergent transitions` = sum(np$Value[np$Parameter == "divergent__"]), check.names = FALSE)
+}))))
+kable(diag_tab)
 ```
 
 ::: {.alert .alert-info}
 
 #### Summary
 
-- Cross-validated classifiers, with thresholds tuned on predictions of recordings the model never heard, give the same conclusions as the GUI classifiers: heterospecific classifications of the focal bellbird are overwhelmingly the sympatric species, while other bellbirds are rarely classified as heterospecifics
-- The out-of-fold control uses all bellbird recordings, so the focal vs others contrasts are now estimated from the data rather than bounded by the priors
+- With every hyperparameter configuration, heterospecific classifications of the focal bellbird were overwhelmingly the sympatric species (sympatric : allopatric odds `r paste(sapply(rob_fits, function(r) { p <- plogis(as_draws_df(r$sa)$b_Intercept); round(median(p / (1 - p)), 1) }), collapse = ", ")` for configurations A, B and C), and the focal bellbird was classified as a sympatric model species far more often than other bellbirds. The conclusions do not depend on the configuration chosen
 
 :::
 

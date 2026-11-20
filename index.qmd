@@ -12,15 +12,15 @@ The vocalizations of the focal individual were classified mostly as sympatric sp
 ## Contents
 
 - **[Data preparation](scripts/birdnet_acoustic_data_prep.qmd)**: annotations, selection tables and export of the data for BirdNET
-- **[Model fitting](scripts/birdnet_model_fitting.qmd)**: training the BirdNET classifiers from code (seed 123), their evaluation and the classification of the clips
-- **[Statistical analysis](scripts/statistical_analysis.qmd)**: classifiers, Bayesian models and changes over time
-- **[Statistical analysis with cross-validated classifiers](scripts/statistical_analysis_cv.qmd)**: the same analyses with the cross-validated BirdNET classifiers, and their comparison
+- **[Model fitting](scripts/birdnet_model_fitting.qmd)**: training the BirdNET classifiers (seed 123) with 5-fold cross-validation grouped by recording, and the classification of the clips
+- **[Statistical analysis](scripts/statistical_analysis_cv.qmd)**: Bayesian models of the classifications and their change over time
+- **[Videos and images](media.qmd)**: videos and photos of the focal bellbird and of adult bellbirds, and the main figures
 - **Presentation**: slides of the talk, in [English](presentation_en.qmd) and [Spanish](presentation.qmd), with the spectrograms and their sounds
 
 ## Main results
 
 ::: {.figure-gallery}
-![Vocalizations classified as each heterospecific species by the classifier trained with sympatric and allopatric species. The focal bellbird was classified as the sympatric species of each pair (blue) about 14 times more often than as its allopatric relative (purple); other bellbirds (test recordings, not used for training) were almost never classified as another species.](output/sympatric_vs_allopatric_barplot.png)
+![Vocalizations classified as each heterospecific species by the classifier trained with sympatric and allopatric species. The focal bellbird was classified as the sympatric species of each pair (blue) about 16 times more often than as its allopatric relative (purple); other bellbirds, each classified by a model that never heard its recording, were almost never classified as another species.](output/sympatric_vs_allopatric_barplot.png)
 :::
 
 ## Reproducibility

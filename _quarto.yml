@@ -7,11 +7,18 @@ project:
     - presentation_en.qmd
     - scripts/birdnet_acoustic_data_prep.qmd
     - scripts/birdnet_model_fitting.qmd
-    - scripts/statistical_analysis.qmd
     - scripts/statistical_analysis_cv.qmd
+    - media.qmd
   resources:
     - presentation/presentation.html
     - presentation/presentation_en.html
+    - presentation/images/mimic_campana.mp4
+    - presentation/images/mimic_aracari.mp4
+    - presentation/images/hanging_with_models_web.mp4
+    - presentation/images/mimetic_and_toucan.mp4
+    - presentation/images/focal_spectrogram_black_en.mp4
+    - presentation/images/adult_bellbird_spectrogram_short_black_en.mp4
+    - presentation/images/adulto_monteverde.mp4
 
 execute:
   freeze: auto
@@ -31,12 +38,10 @@ website:
         text: Data preparation
       - href: scripts/birdnet_model_fitting.qmd
         text: Model fitting
-      - text: Statistical analysis
-        menu:
-          - href: scripts/statistical_analysis.qmd
-            text: GUI classifiers
-          - href: scripts/statistical_analysis_cv.qmd
-            text: Cross-validated classifiers
+      - href: scripts/statistical_analysis_cv.qmd
+        text: Statistical analysis
+      - href: media.qmd
+        text: Videos and images
       - text: Presentation
         menu:
           - href: presentation_en.qmd
