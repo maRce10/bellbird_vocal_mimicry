@@ -7,7 +7,7 @@ toc: false
 
 This site contains the analyses and the presentation of the study. We evaluated whether the vocalizations of a juvenile Three-wattled Bellbird (*Procnias tricarunculatus*) observed in Monteverde, Costa Rica, represent genuine mimicry of sympatric species or resemblances arising by chance. To do so, we retrained BirdNET with three sympatric species it could have imitated, their closely related allopatric species that could not have served as vocal models, and vocalizations of other bellbirds.
 
-The vocalizations of the focal individual were classified mostly as sympatric species, a bias not found in other bellbirds. Sounds resembling the Keel-billed Toucan (*Ramphastos sulfuratus*) and the Collared Aracari (*Pteroglossus torquatus*) were frequent in the first observations, and classification as bellbird increased over time.
+The vocalizations of the focal individual were classified mostly as sympatric species, a bias not found in other bellbirds. Sounds resembling the Keel-billed Toucan (*Ramphastos sulfuratus*) and the Collared Aracari (*Pteroglossus torquatus*) were frequent in the first observations, and classification as bellbird increased over time. The imitations themselves did not become more similar to their models over the season, and the bellbird's own song became more bellbird-like to the classifier but not more consistent.
 
 ## Contents
 

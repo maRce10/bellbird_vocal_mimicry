@@ -91,7 +91,7 @@ Classifications come from the cross-validated BirdNET classifiers of the [model 
 - All training and test clips were pooled and split into 5 folds grouped by recording (all clips of a recording in the same fold) and stratified by species, seed 123
 - For each fold, the classifiers were trained on the other 4 folds (early stopping on a random 20% of the training clips) and classified the held-out fold, so every clip has a prediction from a model that never heard its recording
 - Training and classification used a 400–12,000 Hz bandpass
-- 33 hyperparameter configurations were compared (3 chosen by hand and 30 drawn at random from the search space of BirdNET-Analyzer's built-in tuner); for each classifier, the simplest configuration within one standard error of the highest out-of-fold macro-averaged AUPRC was selected (rule set before seeing the results, without using the focal bellbird). See the [model fitting](birdnet_model_fitting.qmd) report
+- Hyperparameters were chosen by random search among 30 configurations drawn from the search space of BirdNET-Analyzer's built-in tuner; for each classifier, the simplest configuration within one standard error of the highest out-of-fold macro-averaged AUPRC was selected (rule set before seeing the results, without using the focal bellbird). See the [model fitting](birdnet_model_fitting.qmd) report
 - Per-species thresholds maximize F1 on the out-of-fold predictions. A clip is assigned to its highest-confidence species if it reaches that species' threshold, otherwise it is unassigned
 - The focal bellbird clips are classified by the 5 fold models of the selected configuration: confidences are averaged across models (ensemble) and the out-of-fold thresholds are applied
 
@@ -337,10 +337,13 @@ Daily proportions of the focal bellbird vocalizations assigned to each category 
 
 ```{r time data}
 rec_info <- read.table("./data/raw/Recording_dates_.csv", header = TRUE, sep = ";")
+# dates are written with Spanish month abbreviations (e.g. 05-ago-20); they are converted to
+# month numbers so that parsing does not depend on the locale
 rec_info$date <- gsub("/", "-", rec_info$date)
-rec_info$date <- gsub("out", "ago", rec_info$date)
-rec_info$date <- gsub("set", "sep", rec_info$date)
-rec_info$date <- as.Date(rec_info$date, format = "%d-%b-%y")
+month_num <- c(ene = 1, feb = 2, mar = 3, abr = 4, may = 5, jun = 6, jul = 7, ago = 8, sep = 9, set = 9,
+               oct = 10, nov = 11, dic = 12)
+dp <- strsplit(rec_info$date, "-")
+rec_info$date <- as.Date(sprintf("20%s-%02d-%s", sapply(dp, `[`, 3), month_num[sapply(dp, `[`, 2)], sapply(dp, `[`, 1)))
 
 fp <- focal_pred$sympatric
 fp$recording <- focal_meta$recording[match(fp$clip, focal_meta$clip)]
@@ -358,17 +361,18 @@ dat$prop <- dat$n / dat$total
 dat$pred_common_name <- factor(common_names[as.character(dat$pred)], levels = common_names[cats])
 dat$julian_day <- as.numeric(format(dat$date, "%j"))
 dat$obs <- factor(seq_len(nrow(dat)))
+dat$day <- factor(dat$date)
 
 kable(aggregate(n ~ pred_common_name, dat, sum), col.names = c("Category", "Clips"))
 ```
 
-Binomial model: Julian day with intercepts and slopes varying by category, and an observation-level random effect for overdispersion.
+Binomial model (logit link): Julian day with intercepts and slopes varying by category, a random intercept of recording day (the categories of a day share it, and date varies only between days) and an observation-level random effect for overdispersion.
 
 ```{r time model}
 priors3 <- c(prior(normal(0, 2.5), class = "Intercept"), prior(normal(0, 1), class = "b"),
              prior(exponential(1), class = "sd"))
 
-mod3 <- brm(n | trials(total) ~ scale(julian_day) + (1 + scale(julian_day) | pred_common_name) + (1 | obs),
+mod3 <- brm(n | trials(total) ~ scale(julian_day) + (1 + scale(julian_day) | pred_common_name) + (1 | day) + (1 | obs),
             family = binomial, data = dat, prior = priors3, chains = chains, cores = cores, iter = iter,
             control = list(adapt_delta = 0.99), seed = 123,
             file = file.path(fit_dir, "mimicry_through_time"), file_refit = "on_change")
@@ -483,19 +487,20 @@ kable(data.frame(Species = levels(q$species), Clips = as.numeric(table(q$species
 
 ## Similarity to the assigned species
 
-Gaussian models of each measure with Julian day, its interaction with species and the recording as a random intercept. Confidence is modelled on the logit scale.
+Models of each measure with Julian day and its interaction with species, and random intercepts of recording day and of recording within day (date varies only between days, so the day is the unit of replication for the temporal trend). Similarity: Gaussian model (identity link) of the standardized values; confidence: Beta regression (logit link).
 
 ```{r quality models}
-q$logit_confidence <- qlogis(pmin(pmax(q$confidence, 0.001), 0.999))
+q$confidence_b <- pmin(pmax(q$confidence, 0.001), 0.999) # Beta regression needs values inside (0, 1)
 priors4 <- c(prior(normal(0, 1), class = "b"), prior(exponential(1), class = "sd"),
              prior(exponential(1), class = "sigma"))
+priors_beta <- c(prior(normal(0, 1), class = "b"), prior(exponential(1), class = "sd"))
 
-mod4_sim <- brm(scale(similarity) ~ species * scale(julian_day) + (1 | recording), data = q,
+mod4_sim <- brm(scale(similarity) ~ species * scale(julian_day) + (1 | day/recording), data = q,
                 prior = priors4, chains = chains, iter = iter, cores = cores,
                 control = list(adapt_delta = 0.99), seed = 123,
                 file = file.path(fit_dir, "imitation_similarity_through_time"), file_refit = "on_change")
-mod4_conf <- brm(logit_confidence ~ species * scale(julian_day) + (1 | recording), data = q,
-                 prior = priors4, chains = chains, iter = iter, cores = cores,
+mod4_conf <- brm(confidence_b ~ species * scale(julian_day) + (1 | day/recording), data = q,
+                 family = Beta(), prior = priors_beta, chains = chains, iter = iter, cores = cores,
                  control = list(adapt_delta = 0.99), seed = 123,
                  file = file.path(fit_dir, "imitation_confidence_through_time"), file_refit = "on_change")
 ```
@@ -546,7 +551,7 @@ nd4 <- expand.grid(julian_day = seq(min(q$julian_day), max(q$julian_day), length
 nd4$date <- as.Date(nd4$julian_day - 1, origin = paste0(format(q$date[1], "%Y"), "-01-01"))
 sim_fit <- posterior_epred(mod4_sim, newdata = nd4, re_formula = NA)
 sim_fit <- sim_fit * sd(q$similarity) + mean(q$similarity) # back from the scaled response
-conf_fit <- plogis(posterior_epred(mod4_conf, newdata = nd4, re_formula = NA))
+conf_fit <- posterior_epred(mod4_conf, newdata = nd4, re_formula = NA)
 fits <- rbind(data.frame(nd4, measure = "Acoustic similarity", value = colMeans(sim_fit),
                          low = apply(sim_fit, 2, quantile, 0.025), high = apply(sim_fit, 2, quantile, 0.975)),
               data.frame(nd4, measure = "Classifier confidence", value = colMeans(conf_fit),
@@ -592,7 +597,7 @@ kable(data.frame(Days = nlevels(b$day), Clips = nrow(b), `Mean distance to day c
                  `Other bellbirds: mean distance to recording centroid` = mean(ref_dist), check.names = FALSE),
       digits = 3, row.names = FALSE)
 
-mod5 <- brm(scale(distance) ~ scale(julian_day) + (1 | day), data = b,
+mod5 <- brm(scale(distance) ~ scale(julian_day) + (1 | day/recording), data = b,
             prior = c(prior(normal(0, 1), class = "b"), prior(exponential(1), class = "sd"),
                       prior(exponential(1), class = "sigma")),
             chains = chains, iter = iter, cores = cores, control = list(adapt_delta = 0.99), seed = 123,
@@ -652,12 +657,733 @@ cat(sprintf("- Distance of own-species clips to their day centroid through time 
 
 :::
 
+## Recording quality and the acoustic variability of each species
+
+Two possible problems with the measures above:
+
+- **Recording quality**: vocalizations recorded with low signal-to-noise ratio (SNR) have embeddings partly describing the background noise, so they look less similar to any species and get lower classifier confidence. Recording equipment changed through the season (Tascam DR-40 in April, mostly iPhone SE in July–August, Tascam DR-40 with Sennheiser microphone in September–November), so recording quality could create or hide a temporal trend. The random intercepts do not remove this, because date varies only between days
+- **Acoustic variability of the model species**: a species with a wide acoustic space (several song types or variants) has a centroid that may lie between its actual vocalizations. A good copy of one real variant can then be far from the centroid
+
+To address them, acoustic similarity was measured as the closeness to the nearest real vocalizations of the species, and SNR was added to the models.
+
+### Signal-to-noise ratio
+
+SNR (dB) of each clip, measured within the frequency band of its annotation, against the 0.04 s margins before and after the vocalization (`warbleR::sig2noise`). The margins are short, so SNR describes the noise immediately around each vocalization.
+
+```{r snr}
+snr_file <- "./data/processed/snr_clips.csv"
+if (!file.exists(snr_file)) {
+    est <- readRDS("./data/processed/extended_selection_table_sympatric_and_allopatric_species.RDS")
+    s <- warbleR::sig2noise(est, mar = 0.04, bp = "frange", in.dB = TRUE, pb = FALSE, parallel = cores)
+    write.csv(data.frame(clip = s$sound.files, source = s$source, snr = s$SNR), snr_file, row.names = FALSE)
+}
+snr <- read.csv(snr_file)
+
+q$snr <- snr$snr[match(q$clip, snr$clip)]
+q$equipment <- rec_info$equipment[match(q$recording, rec_info$sound.files)]
+ref_snr <- snr$snr[match(rownames(emb_ref), snr$clip)]
+
+snr_sum <- function(x) sprintf("%.1f (%.1f–%.1f)", median(x), quantile(x, 0.25), quantile(x, 0.75))
+kable(rbind(data.frame(Group = "Focal bellbird (assigned clips)", Clips = nrow(q), `SNR, median (IQR)` = snr_sum(q$snr), check.names = FALSE),
+            do.call(rbind, lapply(quality_spp, function(sp) data.frame(Group = paste("Reference:", common_names[sp]), Clips = sum(ref_sp == sp, na.rm = TRUE),
+                                                                         `SNR, median (IQR)` = snr_sum(ref_snr[which(ref_sp == sp)]), check.names = FALSE)))),
+      row.names = FALSE)
+```
+
+```{r snr plot}
+#| fig-width: 9
+#| fig-height: 4
+
+ggplot(q, aes(date, snr, fill = equipment)) +
+    geom_boxplot(aes(group = day), outlier.size = 0.6, width = 5, alpha = 0.7) +
+    scale_fill_viridis_d(end = 0.9, option = "mako", name = "Equipment") +
+    scale_x_date(date_breaks = "1 month", date_labels = "%b") +
+    labs(x = "Date", y = "SNR (dB)")
+```
+
+Each box is a recording day of the focal bellbird. The focal recordings have lower SNR than the reference recordings, and SNR differs between recording periods.
+
+### Similarity to the nearest real vocalizations
+
+For each focal clip, **neighbour similarity** is the mean cosine similarity (generic BirdNET embeddings) to its 5 most similar reference clips of the assigned species. Species have different numbers of reference clips, and more clips give closer neighbours by chance, so the reference clips of each species were subsampled to the size of the smallest (`r min(table(ref_sp[ref_sp %in% quality_spp]))` clips), 20 times, and the values averaged.
+
+The same score was computed for each reference clip against the subsampled reference clips of its species from other recordings. This gives how close a genuine vocalization of each species is to its nearest neighbours, whatever the variability of that species. The **typicality percentile** of a focal clip is its percentile in that distribution: 50% means as close to the species as a typical real vocalization. It was computed against all reference clips and against reference clips with similar SNR (within 2 dB).
+
+```{r neighbour similarity}
+ref_rec_all <- folds$recording[match(paste0(rownames(emb_ref), ".wav"), folds$clip)]
+k_nn <- 5; n_draw <- 20
+n_sub <- min(table(ref_sp[ref_sp %in% quality_spp]))
+knn_mean <- function(sim) apply(sim, 1, function(x) mean(sort(x, decreasing = TRUE)[seq_len(k_nn)]))
+
+set.seed(123)
+q$knn <- q$pct <- q$pct_snr <- NA
+ref_knn <- list()
+for (sp in quality_spp) {
+    idx <- which(ref_sp == sp)
+    qi <- which(q$predicted == sp)
+    fk <- pc <- pcs <- matrix(NA, length(qi), n_draw)
+    rk <- matrix(NA, length(idx), n_draw)
+    for (d in seq_len(n_draw)) {
+        sub <- sample(idx, n_sub)
+        fk[, d] <- knn_mean(emb_focal[q$clip[qi], ] %*% t(emb_ref[sub, ]))
+        sim_r <- emb_ref[idx, ] %*% t(emb_ref[sub, ])
+        sim_r[outer(ref_rec_all[idx], ref_rec_all[sub], "==")] <- -Inf # no neighbours from the same recording
+        rk[, d] <- knn_mean(sim_r)
+        pc[, d] <- ecdf(rk[, d])(fk[, d])
+        # percentile among reference clips with SNR within 2 dB of the focal clip
+        pcs[, d] <- sapply(seq_along(qi), function(i) {
+            w <- abs(ref_snr[idx] - q$snr[qi[i]]) <= 2
+            if (sum(w) < 20) w <- rank(abs(ref_snr[idx] - q$snr[qi[i]]), ties.method = "first") <= 20
+            mean(rk[w, d] <= fk[i, d])
+        })
+    }
+    q$knn[qi] <- rowMeans(fk); q$pct[qi] <- rowMeans(pc); q$pct_snr[qi] <- rowMeans(pcs)
+    ref_knn[[sp]] <- data.frame(species = unname(common_names[sp]), knn = rowMeans(rk), snr = ref_snr[idx])
+}
+ref_knn <- do.call(rbind, ref_knn)
+ref_knn$species <- factor(ref_knn$species, levels = levels(q$species))
+
+kable(data.frame(Species = levels(q$species),
+                 `Focal: neighbour similarity` = tapply(q$knn, q$species, mean),
+                 `Reference: neighbour similarity` = tapply(ref_knn$knn, ref_knn$species, mean),
+                 `Focal: median typicality percentile` = tapply(q$pct, q$species, median),
+                 `Focal: median typicality percentile (SNR-matched)` = tapply(q$pct_snr, q$species, median),
+                 `Correlation with centroid similarity` = sapply(split(q, q$species), function(d) cor(d$knn, d$similarity)),
+                 check.names = FALSE), digits = 3, row.names = FALSE)
+```
+
+How much does SNR lower the neighbour similarity of genuine vocalizations? Reference clips (lines) and focal clips (points):
+
+```{r snr effect plot}
+#| fig-width: 10
+#| fig-height: 4
+
+ggplot(ref_knn, aes(snr, knn)) +
+    geom_point(alpha = 0.15, size = 0.8, color = "grey50") +
+    geom_smooth(method = "lm", color = "black") +
+    geom_point(data = q, aes(color = species), alpha = 0.3, size = 0.8) +
+    geom_smooth(data = q, aes(color = species), method = "lm", se = FALSE) +
+    facet_wrap(~ species) +
+    scale_color_viridis_d(end = 0.8, guide = "none") +
+    labs(x = "SNR (dB)", y = "Neighbour similarity") +
+    theme(strip.background = element_blank())
+
+kable(data.frame(Species = levels(ref_knn$species),
+                 `Reference: change in neighbour similarity per 10 dB` = sapply(split(ref_knn, ref_knn$species), function(d) 10 * coef(lm(knn ~ snr, d))[2]),
+                 check.names = FALSE), digits = 3, row.names = FALSE)
+```
+
+### Models with SNR
+
+The models of the quality measures through time were refitted with neighbour similarity instead of centroid similarity, with SNR as a covariate, and in two sensitivity versions: only clips with SNR above the median of the focal clips, and with the recording equipment as a covariate (Nikon P900, `r sum(q$equipment == "Nikon P900")` clips, left out). Own-song consistency was refitted with SNR as a covariate and, for the high-SNR version, recomputed from the high-SNR clips only.
+
+```{r snr models}
+fit_q <- function(formula, data, name, family = gaussian()) brm(formula, data = data, family = family,
+                                           prior = if (family$family == "beta") priors_beta else priors4, chains = chains, iter = iter, cores = cores,
+                                           control = list(adapt_delta = 0.99), seed = 123,
+                                           file = file.path(fit_dir, name), file_refit = "on_change")
+q_hi <- q[q$snr >= median(q$snr), ]
+q_eq <- q[q$equipment != "Nikon P900", ]
+
+mod6 <- list(
+    knn = fit_q(scale(knn) ~ species * scale(julian_day) + (1 | day/recording), q, "imitation_knn_through_time"),
+    knn_snr = fit_q(scale(knn) ~ species * scale(julian_day) + scale(snr) + (1 | day/recording), q, "imitation_knn_snr_through_time"),
+    knn_hi = fit_q(scale(knn) ~ species * scale(julian_day) + scale(snr) + (1 | day/recording), q_hi, "imitation_knn_high_snr_through_time"),
+    knn_eq = fit_q(scale(knn) ~ species * scale(julian_day) + scale(snr) + equipment + (1 | day/recording), q_eq, "imitation_knn_equipment_through_time"),
+    conf_snr = fit_q(confidence_b ~ species * scale(julian_day) + scale(snr) + (1 | day/recording), q, "imitation_confidence_snr_through_time", family = Beta()),
+    conf_hi = fit_q(confidence_b ~ species * scale(julian_day) + scale(snr) + (1 | day/recording), q_hi, "imitation_confidence_high_snr_through_time", family = Beta()),
+    conf_eq = fit_q(confidence_b ~ species * scale(julian_day) + scale(snr) + equipment + (1 | day/recording), q_eq, "imitation_confidence_equipment_through_time", family = Beta()))
+
+# consistency: SNR as covariate, and recomputed from the high-SNR clips
+b$snr <- q$snr[match(b$clip, q$clip)]
+b_hi <- q[q$species == "Three-wattled Bellbird" & q$snr >= median(q$snr), ]
+b_hi <- b_hi[b_hi$day %in% names(which(table(b_hi$day) >= 5)), ]
+b_hi$day <- droplevels(b_hi$day)
+cent_hi <- t(sapply(split(b_hi$clip, b_hi$day), function(cl) { v <- colMeans(emb_focal[cl, , drop = FALSE]); v / sqrt(sum(v^2)) }))
+b_hi$distance <- 1 - rowSums(emb_focal[b_hi$clip, ] * cent_hi[as.character(b_hi$day), ])
+priors5 <- c(prior(normal(0, 1), class = "b"), prior(exponential(1), class = "sd"), prior(exponential(1), class = "sigma"))
+fit_c <- function(formula, data, name) brm(formula, data = data, prior = priors5, chains = chains, iter = iter, cores = cores,
+                                           control = list(adapt_delta = 0.99), seed = 123,
+                                           file = file.path(fit_dir, name), file_refit = "on_change")
+mod7 <- list(snr = fit_c(scale(distance) ~ scale(julian_day) + scale(snr) + (1 | day/recording), b, "own_song_consistency_snr_through_time"),
+             hi = fit_c(scale(distance) ~ scale(julian_day) + scale(snr) + (1 | day/recording), b_hi, "own_song_consistency_high_snr_through_time"))
+```
+
+```{r snr model summaries}
+#| results: "asis"
+#| fig-height: 5
+
+for (m in c(mod6, mod7))
+    extended_summary(m, n.posterior = 1000, fill = mako(10)[8], trace.palette = mako,
+                     remove.intercepts = FALSE, highlight = TRUE, print.name = FALSE)
+```
+
+Effect of SNR in each model (per SD of SNR):
+
+```{r snr coefficients}
+snr_coef <- do.call(rbind, lapply(names(c(mod6, mod7)), function(nm) {
+    x <- as_draws_df(c(mod6, mod7)[[nm]])$b_scalesnr
+    if (is.null(x)) return(NULL)
+    data.frame(Model = nm, Estimate = mean(x), `2.5%` = quantile(x, 0.025), `97.5%` = quantile(x, 0.975), check.names = FALSE, row.names = NULL)
+}))
+kable(snr_coef, digits = 3, row.names = FALSE)
+```
+
+Slopes through time (per SD of date) of each species in every version of the models. Similarity and distance are in SD units, confidence in log-odds:
+
+```{r snr slopes}
+#| fig-width: 9
+#| fig-height: 8
+
+model_versions <- list(
+    `Centroid similarity` = list(mod4_sim, "Acoustic similarity", "Original"),
+    `Neighbour similarity` = list(mod6$knn, "Acoustic similarity", "Neighbour similarity"),
+    `Neighbour similarity + SNR` = list(mod6$knn_snr, "Acoustic similarity", "Neighbour + SNR"),
+    `Neighbour similarity + SNR, high-SNR clips` = list(mod6$knn_hi, "Acoustic similarity", "Neighbour + SNR, high-SNR clips"),
+    `Neighbour similarity + SNR + equipment` = list(mod6$knn_eq, "Acoustic similarity", "Neighbour + SNR + equipment"),
+    `Confidence` = list(mod4_conf, "Classifier confidence", "Original"),
+    `Confidence + SNR` = list(mod6$conf_snr, "Classifier confidence", "+ SNR"),
+    `Confidence + SNR, high-SNR clips` = list(mod6$conf_hi, "Classifier confidence", "+ SNR, high-SNR clips"),
+    `Confidence + SNR + equipment` = list(mod6$conf_eq, "Classifier confidence", "+ SNR + equipment"))
+sl6 <- do.call(rbind, lapply(model_versions, function(v) {
+    r <- species_slopes(v[[1]], v[[2]]); r$Version <- v[[3]]; r
+}))
+cons_slope <- function(fit, version) {
+    x <- as_draws_df(fit)$b_scalejulian_day
+    data.frame(Measure = "Own-song distance to day centroid", Species = "Three-wattled Bellbird", Slope = mean(x),
+               `2.5%` = quantile(x, 0.025), `97.5%` = quantile(x, 0.975), Version = version, check.names = FALSE, row.names = NULL)
+}
+sl6 <- rbind(sl6, cons_slope(mod5, "Original"), cons_slope(mod7$snr, "+ SNR"), cons_slope(mod7$hi, "+ SNR, high-SNR clips"))
+sl6$Version <- factor(sl6$Version, levels = rev(unique(sl6$Version)))
+sl6$Species <- factor(sl6$Species, levels = levels(q$species))
+
+ggplot(sl6, aes(Slope, Version, color = Species)) +
+    geom_vline(xintercept = 0, linetype = 2, color = "grey50") +
+    geom_pointrange(aes(xmin = `2.5%`, xmax = `97.5%`), position = position_dodge(width = 0.6)) +
+    facet_grid(Measure ~ ., scales = "free_y", space = "free_y", labeller = label_wrap_gen(16)) +
+    scale_color_viridis_d(end = 0.8, name = NULL) +
+    labs(x = "Slope through time (per SD of date)", y = NULL) +
+    theme(strip.background = element_blank(), strip.text.y = element_text(angle = 0, hjust = 0),
+          legend.position = "top", panel.grid.major.y = element_line(color = "grey92"))
+
+kable(sl6[, c("Measure", "Version", "Species", "Slope", "2.5%", "97.5%")], digits = 3, row.names = FALSE)
+```
+
+`r nrow(q_hi)` clips have SNR above the median (`r round(median(q$snr), 1)` dB); the high-SNR consistency analysis has `r nrow(b_hi)` clips from `r nlevels(b_hi$day)` days.
+
+### Longer noise windows and band-specific noise
+
+The SNR above uses only 0.04 s of noise around each vocalization, so it is measured with error, and adjusting for it may not remove all of its effect. The strongest test against recording artifacts is the comparison between vocalization types within the same recordings: an artifact of equipment, distance or background noise affects all vocalizations of a recording similarly, so it cannot create a difference between the slopes of bellbird-like and toucan-like vocalizations, unless recording quality changed differently in their frequency bands. To check this, SNR was measured again from the original recordings with 0.5 s of noise before and after each vocalization, leaving out any other annotated vocalization (long-window SNR), and the noise level was measured in fixed bands, the median annotated band of the focal clips assigned to each species. The difference in noise level between two bands does not depend on recording gain.
+
+```{r snr long}
+snr_long_file <- "./data/processed/snr_long_focal.csv"
+if (!file.exists(snr_long_file)) {
+    est_attr <- attr(readRDS("./data/processed/extended_selection_table_sympatric_and_allopatric_species.RDS"), "check.res")
+    ann <- read.csv("./data/processed/pooled_annotations.csv")
+    ann <- ann[ann$source == "mimetic_bellbird", ]
+    fq <- data.frame(clip = est_attr$sound.files, file = est_attr$orig.sound.files, start = est_attr$orig.start, end = est_attr$orig.end)
+    fq <- fq[fq$clip %in% q$clip, ]
+    fq <- merge(fq, q[, c("clip", "predicted")], by = "clip")
+    fq$bottom <- ann$bottom.freq[match(paste(fq$file, fq$start), paste(ann$sound.files, ann$start))]
+    fq$top <- ann$top.freq[match(paste(fq$file, fq$start), paste(ann$sound.files, ann$start))]
+    # fixed bands: median annotated band of the focal clips assigned to each species
+    bands <- lapply(split(fq, fq$predicted), function(d) c(median(d$bottom, na.rm = TRUE), median(d$top, na.rm = TRUE)))
+    win <- 0.5
+    band_power <- function(sp, rng) {
+        w <- sp$freq >= rng[1] & sp$freq <= rng[2]
+        colMeans(10^(sp$amp[w, , drop = FALSE] / 10))
+    }
+    res <- parallel::mclapply(seq_len(nrow(fq)), function(i) {
+        x <- fq[i, ]
+        dur <- tuneR::readWave(file.path("./data/raw/recordings", x$file), header = TRUE)
+        dur <- dur$samples / dur$sample.rate
+        from <- max(0, x$start - win); to <- min(dur, x$end + win)
+        wv <- tuneR::readWave(file.path("./data/raw/recordings", x$file), from = from, to = to, units = "seconds")
+        if (wv@stereo) wv <- tuneR::mono(wv, "left")
+        sp <- seewave::spectro(wv, wl = 512, ovlp = 50, plot = FALSE, dB = "max0")
+        tt <- sp$time + from
+        # noise frames: within the windows, outside every annotated vocalization of the recording
+        a <- ann[ann$sound.files == x$file, ]
+        in_voc <- sapply(tt, function(t) any(t >= a$start & t <= a$end))
+        sig <- tt >= x$start & tt <= x$end
+        noise <- !in_voc & !sig
+        own <- c(x$bottom, x$top)
+        p_own <- band_power(sp, own)
+        out <- data.frame(clip = x$clip, noise_frames = sum(noise),
+                          snr_long = if (sum(noise) >= 3) 10 * log10(mean(p_own[sig]) / mean(p_own[noise])) else NA)
+        for (b in names(bands)) out[[paste0("noise_", b)]] <- if (sum(noise) >= 3) 10 * log10(mean(band_power(sp, bands[[b]])[noise])) else NA
+        out
+    }, mc.cores = cores)
+    snr_long <- do.call(rbind, res)
+    write.csv(snr_long, snr_long_file, row.names = FALSE)
+}
+snr_long <- read.csv(snr_long_file)
+q$snr_long <- snr_long$snr_long[match(q$clip, snr_long$clip)]
+noise_cols <- grep("^noise_P|^noise_R", names(snr_long), value = TRUE)
+for (nc in noise_cols) q[[nc]] <- snr_long[[nc]][match(q$clip, snr_long$clip)]
+q$noise_bellbird_vs_toucan <- q$noise_Procnias.tricarunculatus - q$noise_Ramphastos.sulfuratus
+q$noise_aracari_vs_toucan <- q$noise_Pteroglossus.torquatus - q$noise_Ramphastos.sulfuratus
+q_l <- q[!is.na(q$snr_long), ]
+
+kable(data.frame(`Clips with long-window SNR` = nrow(q_l), `Median long-window SNR (dB)` = median(q_l$snr_long),
+                 `Correlation with short-window SNR` = cor(q_l$snr, q_l$snr_long), check.names = FALSE), digits = 2)
+```
+
+Does recording quality change through time differently for each vocalization type?
+
+```{r snr long models}
+priors8 <- c(prior(normal(0, 1), class = "b"), prior(exponential(1), class = "sd"), prior(exponential(1), class = "sigma"))
+fit8 <- function(formula, data, name) brm(formula, data = data, prior = priors8, chains = chains, iter = iter, cores = cores,
+                                          control = list(adapt_delta = 0.99), seed = 123,
+                                          file = file.path(fit_dir, name), file_refit = "on_change")
+mod8 <- list(
+    snr_long = fit8(scale(snr_long) ~ species * scale(julian_day) + (1 | day/recording), q_l, "snr_long_through_time"),
+    noise_bt = fit8(scale(noise_bellbird_vs_toucan) ~ scale(julian_day) + (1 | day/recording), q_l, "noise_bellbird_vs_toucan_band_through_time"),
+    noise_at = fit8(scale(noise_aracari_vs_toucan) ~ scale(julian_day) + (1 | day/recording), q_l, "noise_aracari_vs_toucan_band_through_time"))
+
+day_slope <- function(fit, label) {
+    x <- as_draws_df(fit)$b_scalejulian_day
+    data.frame(Response = label, Slope = mean(x), `2.5%` = quantile(x, 0.025), `97.5%` = quantile(x, 0.975), check.names = FALSE, row.names = NULL)
+}
+sl8 <- species_slopes(mod8$snr_long, "Long-window SNR")
+kable(rbind(data.frame(Response = paste("Long-window SNR,", sl8$Species), sl8[, c("Slope", "2.5%", "97.5%")], check.names = FALSE),
+            day_slope(mod8$noise_bt, "Noise in bellbird band minus toucan band"),
+            day_slope(mod8$noise_at, "Noise in aracari band minus toucan band")),
+      digits = 3, row.names = FALSE, caption = "Slopes through time (SD per SD of date)")
+```
+
+```{r snr long plot}
+#| fig-width: 10
+#| fig-height: 4.5
+
+nl <- rbind(data.frame(date = q_l$date, day = q_l$day, panel = "Noise: bellbird band minus toucan band (dB)", value = q_l$noise_bellbird_vs_toucan),
+            data.frame(date = q_l$date, day = q_l$day, panel = "Noise: aracari band minus toucan band (dB)", value = q_l$noise_aracari_vs_toucan))
+plot_grid(
+    ggplot(q_l, aes(date, snr_long, color = species)) +
+        geom_jitter(width = 1, height = 0, alpha = 0.2, size = 0.8) +
+        geom_smooth(method = "lm", se = FALSE) +
+        scale_color_viridis_d(end = 0.8, name = NULL) +
+        scale_x_date(date_breaks = "2 months", date_labels = "%b") +
+        labs(x = "Date", y = "Long-window SNR (dB)") + theme(legend.position = "top", legend.direction = "vertical"),
+    ggplot(nl, aes(date, value)) +
+        geom_hline(yintercept = 0, linetype = 2, color = "grey50") +
+        geom_boxplot(aes(group = day), outlier.size = 0.5, width = 6, fill = mako(10)[7], alpha = 0.5) +
+        facet_wrap(~ panel, ncol = 1, scales = "free_y", labeller = label_wrap_gen(30)) +
+        scale_x_date(date_breaks = "2 months", date_labels = "%b") +
+        labs(x = "Date", y = NULL) + theme(strip.background = element_blank()),
+    rel_widths = c(1.2, 1))
+```
+
+The neighbour similarity and confidence models were refitted with both SNR measures (final models), and with species-specific effects of long-window SNR (sensitivity). Consistency was refitted with both SNR measures. The difference between the slope of each vocalization type and that of the toucan-like vocalizations from the same recordings is the comparison least affected by recording artifacts.
+
+```{r final models}
+mod9 <- list(
+    knn = fit_q(scale(knn) ~ species * scale(julian_day) + scale(snr) + scale(snr_long) + (1 | day/recording), q_l, "imitation_knn_snr2_through_time"),
+    knn_sp = fit_q(scale(knn) ~ species * (scale(julian_day) + scale(snr_long)) + scale(snr) + (1 | day/recording), q_l, "imitation_knn_snr2_species_through_time"),
+    conf = fit_q(confidence_b ~ species * scale(julian_day) + scale(snr) + scale(snr_long) + (1 | day/recording), q_l, "imitation_confidence_snr2_through_time", family = Beta()),
+    conf_sp = fit_q(confidence_b ~ species * (scale(julian_day) + scale(snr_long)) + scale(snr) + (1 | day/recording), q_l, "imitation_confidence_snr2_species_through_time", family = Beta()))
+b$snr_long <- q$snr_long[match(b$clip, q$clip)]
+mod9$cons <- fit_c(scale(distance) ~ scale(julian_day) + scale(snr) + scale(snr_long) + (1 | day/recording), b[!is.na(b$snr_long), ],
+                   "own_song_consistency_snr2_through_time")
+```
+
+```{r final model summaries}
+#| results: "asis"
+#| fig-height: 5
+
+for (m in c(mod8, mod9))
+    extended_summary(m, n.posterior = 1000, fill = mako(10)[8], trace.palette = mako,
+                     remove.intercepts = FALSE, highlight = TRUE, print.name = FALSE)
+```
+
+```{r final slopes}
+slope_diff <- function(fit, measure, version) {
+    post <- as_draws_df(fit)
+    d <- cbind(post[["b_speciesThreeMwattledBellbird:scalejulian_day"]], post[["b_speciesCollaredAracari:scalejulian_day"]])
+    data.frame(Measure = measure, Version = version, Comparison = c("Bellbird minus toucan", "Aracari minus toucan"),
+               Difference = colMeans(d), `2.5%` = apply(d, 2, quantile, 0.025), `97.5%` = apply(d, 2, quantile, 0.975),
+               check.names = FALSE, row.names = NULL)
+}
+final_versions <- list(list(mod6$knn_snr, "Neighbour similarity", "Short-window SNR"),
+                       list(mod9$knn, "Neighbour similarity", "Both SNR measures"),
+                       list(mod9$knn_sp, "Neighbour similarity", "Both SNR measures, species-specific long-window SNR"),
+                       list(mod6$knn_hi, "Neighbour similarity", "Short-window SNR, high-SNR clips"),
+                       list(mod6$conf_snr, "Classifier confidence", "Short-window SNR"),
+                       list(mod9$conf, "Classifier confidence", "Both SNR measures"),
+                       list(mod9$conf_sp, "Classifier confidence", "Both SNR measures, species-specific long-window SNR"),
+                       list(mod6$conf_hi, "Classifier confidence", "Short-window SNR, high-SNR clips"))
+sl9 <- do.call(rbind, lapply(final_versions, function(v) { r <- species_slopes(v[[1]], v[[2]]); r$Version <- v[[3]]; r }))
+kable(sl9[, c("Measure", "Version", "Species", "Slope", "2.5%", "97.5%")], digits = 3, row.names = FALSE,
+      caption = "Slopes through time of each vocalization type (per SD of date)")
+sd9 <- do.call(rbind, lapply(final_versions, function(v) slope_diff(v[[1]], v[[2]], v[[3]])))
+kable(sd9, digits = 3, row.names = FALSE, caption = "Difference from the slope of the toucan-like vocalizations of the same recordings")
+cons9 <- as_draws_df(mod9$cons)$b_scalejulian_day
+```
+
+### Consistency of the imitations and of the own song
+
+During vocal learning, copies typically become both more similar to the target and more consistent. Consistency was measured for each vocalization type as the cosine similarity of each clip's embedding to the centroid of the other clips of the same type recorded on the same day (leave-one-out, so a clip does not pull the centroid towards itself; day × type combinations with at least 5 clips). Higher values mean more consistent. Centroids of fewer clips are noisier, so the number of clips of the combination (log) was added as a covariate, together with both SNR measures.
+
+```{r consistency by type}
+qc <- q_l
+qc$day_type <- paste(qc$day, qc$species)
+grp_n <- table(qc$day_type)
+qc <- qc[qc$day_type %in% names(grp_n)[grp_n >= 5], ]
+qc$n_group <- as.numeric(grp_n[qc$day_type])
+grp_sum <- rowsum(emb_focal[qc$clip, ], qc$day_type)
+loo <- grp_sum[qc$day_type, ] - emb_focal[qc$clip, ]  # sum of the other clips of the group
+loo <- loo / sqrt(rowSums(loo^2))
+qc$consistency <- rowSums(emb_focal[qc$clip, ] * loo)
+
+kable(data.frame(Species = levels(qc$species),
+                 Clips = as.numeric(table(qc$species)),
+                 `Day × type groups` = tapply(qc$day_type, qc$species, function(x) length(unique(x))),
+                 `Mean consistency` = tapply(qc$consistency, qc$species, mean), check.names = FALSE),
+      digits = 3, row.names = FALSE)
+
+mod12 <- fit_q(scale(consistency) ~ species * scale(julian_day) + scale(log(n_group)) + scale(snr) + scale(snr_long) + (1 | day/recording),
+               qc, "consistency_by_type_through_time")
+```
+
+```{r mod12 summary}
+#| results: "asis"
+#| fig-height: 5
+
+extended_summary(mod12, n.posterior = 1000, fill = mako(10)[8], trace.palette = mako,
+                 remove.intercepts = FALSE, highlight = TRUE, print.name = FALSE)
+```
+
+```{r consistency by type slopes}
+sl12 <- species_slopes(mod12, "Consistency")
+sd12 <- slope_diff(mod12, "Consistency", "Both SNR measures")
+kable(sl12, digits = 3, row.names = FALSE, caption = "Slopes of consistency through time (SD per SD of date)")
+kable(sd12, digits = 3, row.names = FALSE, caption = "Difference from the slope of the toucan-like vocalizations")
+```
+
+::: {.alert .alert-info}
+
+#### Summary
+
+```{r snr summary}
+#| results: "asis"
+#| echo: false
+
+f6 <- function(meas, ver, sp) {
+    r <- sl6[sl6$Measure == meas & sl6$Version == ver & sl6$Species == sp, ]
+    sprintf("%.2f [95%% UI: %.2f–%.2f]", r$Slope, r[["2.5%"]], r[["97.5%"]])
+}
+cat("- The focal recordings have lower SNR than the reference recordings (median ", round(median(q$snr), 1), " vs ",
+    round(median(ref_snr[ref_sp %in% quality_spp], na.rm = TRUE), 1), " dB), and higher SNR increases neighbour similarity (",
+    sprintf("%.2f", snr_coef$Estimate[snr_coef$Model == "knn_snr"]), " SD per SD of SNR) and classifier confidence (",
+    sprintf("%.2f", snr_coef$Estimate[snr_coef$Model == "conf_snr"]), " log-odds per SD)\n", sep = "")
+cat("- Neighbour similarity through time, with SNR (slope, SD per SD of date): Keel-billed Toucan ", f6("Acoustic similarity", "Neighbour + SNR", "Keel-billed Toucan"),
+    ", Collared Aracari ", f6("Acoustic similarity", "Neighbour + SNR", "Collared Aracari"),
+    ", Three-wattled Bellbird ", f6("Acoustic similarity", "Neighbour + SNR", "Three-wattled Bellbird"), "\n", sep = "")
+cat("- Classifier confidence through time, with SNR (slope, log-odds per SD of date): Keel-billed Toucan ", f6("Classifier confidence", "+ SNR", "Keel-billed Toucan"),
+    ", Collared Aracari ", f6("Classifier confidence", "+ SNR", "Collared Aracari"),
+    ", Three-wattled Bellbird ", f6("Classifier confidence", "+ SNR", "Three-wattled Bellbird"), "\n", sep = "")
+fd <- function(meas, ver, cmp) {
+    r <- sd9[sd9$Measure == meas & sd9$Version == ver & sd9$Comparison == cmp, ]
+    sprintf("%.2f [95%% UI: %.2f–%.2f]", r$Difference, r[["2.5%"]], r[["97.5%"]])
+}
+fs <- function(meas, ver, sp) {
+    r <- sl9[sl9$Measure == meas & sl9$Version == ver & sl9$Species == sp, ]
+    sprintf("%.2f [95%% UI: %.2f–%.2f]", r$Slope, r[["2.5%"]], r[["97.5%"]])
+}
+fds <- function(fit) with(day_slope(fit, ""), sprintf("%.2f [95%% UI: %.2f–%.2f]", Slope, `2.5%`, `97.5%`))
+cat("- Final models (neighbour similarity, both SNR measures), slope per SD of date: Keel-billed Toucan ", fs("Neighbour similarity", "Both SNR measures", "Keel-billed Toucan"),
+    ", Collared Aracari ", fs("Neighbour similarity", "Both SNR measures", "Collared Aracari"),
+    ", Three-wattled Bellbird ", fs("Neighbour similarity", "Both SNR measures", "Three-wattled Bellbird"),
+    "; bellbird minus toucan ", fd("Neighbour similarity", "Both SNR measures", "Bellbird minus toucan"),
+    ", aracari minus toucan ", fd("Neighbour similarity", "Both SNR measures", "Aracari minus toucan"), "\n", sep = "")
+cat("- Long-window SNR changed through time differently by vocalization type (see table); noise in the bellbird band relative to the toucan band: ",
+    fds(mod8$noise_bt), "; aracari band relative to the toucan band: ", fds(mod8$noise_at), "\n", sep = "")
+cat("- Consistency through time (similarity to the leave-one-out day centroid of the same vocalization type, slope SD per SD of date): Keel-billed Toucan ",
+    with(sl12[1, ], sprintf("%.2f [95%% UI: %.2f–%.2f]", Slope, `2.5%`, `97.5%`)), ", Collared Aracari ",
+    with(sl12[2, ], sprintf("%.2f [95%% UI: %.2f–%.2f]", Slope, `2.5%`, `97.5%`)), ", Three-wattled Bellbird ",
+    with(sl12[3, ], sprintf("%.2f [95%% UI: %.2f–%.2f]", Slope, `2.5%`, `97.5%`)), "\n", sep = "")
+cat(sprintf("- Own-song distance to the day centroid, with both SNR measures: %.2f [95%% UI: %.2f–%.2f]\n", mean(cons9), quantile(cons9, 0.025), quantile(cons9, 0.975)))
+cat("- Own-song distance to the day centroid, with SNR: ", f6("Own-song distance to day centroid", "+ SNR", "Three-wattled Bellbird"),
+    "; high-SNR clips only: ", f6("Own-song distance to day centroid", "+ SNR, high-SNR clips", "Three-wattled Bellbird"), "\n", sep = "")
+```
+
+:::
+
+# Dialects of the focal bellbird
+
+Three-wattled Bellbirds sing in regional dialects. If the focal bellbird produced more than one dialect, and in proportions that changed through time, a day centroid that mixes dialects would make its own song look less consistent, and a shift towards the dialect closer to the reference recordings could look like an improvement. A BirdNET classifier was trained to discriminate the dialects of the reference bellbirds (annotated as Monteverde, Nicaragua, Panama and Talamanca; babbling left out), with the same pipeline as the species classifiers: 5-fold cross-validation grouped by recording and stratified by dialect (seed 123), bandpass 400–12,000 Hz, per-dialect thresholds maximizing F1 on the out-of-fold predictions, and the configuration chosen with the one-standard-error rule among the same 30 random configurations compared for the species classifiers (`MODELS=dialect bash scripts/birdnet_cv.sh`). The focal bellbird clips classified as Three-wattled Bellbird by the sympatric-only classifier were then classified by the ensemble of the 5 fold models.
+
+## Dialect classifier
+
+```{r dialect classifier}
+species_cv_dir <- cv_dir
+dialect_dir <- "./data/processed/birdnet_cv_dialect"
+dialects <- c("Monteverde", "Nicaragua", "Panama", "Talamanca")
+dfolds <- read.csv(file.path(dialect_dir, "folds.csv"))
+# same 30 random configurations as the species classifiers
+dialect_configs <- read.csv(file.path(cv_dir, "random_search_configs.csv"))$config
+
+# the CV functions read cv_dir and model_spp
+cv_dir <- dialect_dir
+model_spp$dialect <- dialects
+dscores <- setNames(lapply(dialect_configs, oof_scores, model = "dialect", folds = dfolds), dialect_configs)
+# configurations whose training diverged (over 90% of the clips never reach the 0.05 reporting
+# limit in some fold) are left out
+d_diverged <- dialect_configs[sapply(dscores, function(sc) any(tapply(rowSums(sc[, dialects]) == 0, sc$fold, mean) > 0.9))]
+dialect_configs <- setdiff(dialect_configs, d_diverged)
+dscores <- dscores[dialect_configs]
+d_auprc <- sapply(dscores, function(sc) mean(sapply(dialects, function(d) avg_precision(sc[[d]], sc$true == d))))
+d_fold <- sapply(dscores, fold_auprc, spp = dialects)
+d_cx <- do.call(rbind, lapply(dialect_configs, config_complexity, model = "dialect"))
+d_best <- select_one_se(d_auprc, sd(d_fold[, which.max(d_auprc)]) / sqrt(5), d_cx)
+d_thr <- optimal_thresholds(dscores[[d_best]], dialects)
+d_metrics <- cv_metrics(dscores[[d_best]], dialects, d_thr)
+d_focal <- ensemble_scores(d_best, "dialect")
+# performance of the selection procedure itself (configuration and thresholds chosen without the scored fold)
+d_sel <- selection_excluded_metrics(dscores, dialects, d_cx)
+cv_dir <- species_cv_dir
+
+d_tab <- data.frame(Configuration = dialect_configs, `Macro AUPRC` = d_auprc, `AUPRC SD across folds` = apply(d_fold, 2, sd),
+                    Selected = ifelse(dialect_configs == d_best, "yes", ""), check.names = FALSE)
+kable(d_tab[order(-d_tab$`Macro AUPRC`), ], digits = 3, row.names = FALSE,
+      caption = paste0("Out-of-fold macro AUPRC of each configuration (diverged and left out: ",
+                       if (length(d_diverged)) paste(d_diverged, collapse = ", ") else "none", ")"))
+kable(data.frame(`Selected configuration: mean fold macro AUPRC` = mean(d_fold[, d_best]),
+                 `Selection procedure: macro AUPRC` = mean(d_sel$AUPRC), `Selection procedure: macro F1` = mean(d_sel$F1),
+                 `Configurations chosen across folds` = paste(sort(unique(d_sel$chosen)), collapse = ", "), check.names = FALSE),
+      digits = 3, caption = "Optimism of the selection: each fold scored with the configuration and thresholds chosen on the other four")
+kable(setNames(d_metrics$per_species, c("Dialect", "Precision", "Recall", "F1", "AUPRC", "Threshold", "Clips")),
+      digits = 3, row.names = FALSE, caption = paste0("Out-of-fold performance of the selected configuration (", d_best, ")"))
+
+dsc <- dscores[[d_best]]
+dsc$pred <- d_metrics$pred
+dsc$recording <- dfolds$recording[match(paste0(dsc$clip, ".wav"), dfolds$clip)]
+# recording-level dialect: highest mean confidence across the recording's clips
+rec_d <- do.call(rbind, lapply(split(dsc, dsc$recording), function(d)
+    data.frame(true = d$true[1], pred = dialects[which.max(colMeans(d[, dialects]))])))
+```
+
+Out-of-fold confusion matrix (assigned clips, rows: annotated dialect) and recording-level accuracy (dialect with the highest mean confidence over the clips of each recording):
+
+```{r dialect confusion}
+kable(as.data.frame.matrix(table(Annotated = dsc$true, Predicted = factor(dsc$pred, levels = c(dialects, "Unassigned")))))
+kable(as.data.frame.matrix(table(Annotated = rec_d$true, Predicted = factor(rec_d$pred, levels = dialects))),
+      caption = paste0("Recordings: ", sum(rec_d$true == rec_d$pred), " of ", nrow(rec_d), " correctly assigned"))
+```
+
+## Dialects of the focal bellbird
+
+```{r focal dialects}
+fd <- q[q$species == "Three-wattled Bellbird", ]
+fd <- cbind(fd, d_focal[match(fd$clip, d_focal$clip), dialects])
+fd$dialect <- assign_species(fd, dialects, d_thr)
+fd$dialect_conf <- apply(fd[, dialects], 1, max)
+fd$period <- cut(fd$date, as.Date(c("2020-03-01", "2020-06-01", "2020-08-31", "2020-12-01")),
+                 labels = c("April", "July–August", "September–November"))
+
+dtab <- table(fd$period, factor(fd$dialect, levels = c(dialects, "Unassigned")))
+kable(cbind(as.data.frame.matrix(round(100 * prop.table(dtab, 1), 1)), Clips = rowSums(dtab)),
+      caption = "Percentage of the focal bellbird's own-species clips assigned to each dialect")
+nt <- table(fd$recording, fd$dialect)
+```
+
+`r sum(nt[, "Nicaragua"] > 0 & nt[, "Talamanca"] > 0)` of the `r sum(nt[, "Nicaragua"] + nt[, "Talamanca"] > 0)` recordings with Nicaragua or Talamanca clips have both, so the focal bellbird alternated between the two dialects within recording sessions.
+
+```{r focal dialect plot}
+#| fig-width: 9
+#| fig-height: 4
+
+dd <- as.data.frame(table(date = fd$date, dialect = factor(fd$dialect, levels = c(dialects, "Unassigned"))))
+dd$date <- as.Date(as.character(dd$date))
+dd$prop <- dd$Freq / ave(dd$Freq, dd$date, FUN = sum)
+ggplot(dd[dd$Freq > 0, ], aes(date, prop, fill = dialect)) +
+    geom_col(width = 1.5, position = "stack") +
+    scale_fill_manual(values = c(Monteverde = "#E07B39", Nicaragua = mako(10)[3], Panama = "#D9B44A", Talamanca = mako(10)[7], Unassigned = "grey80"), name = NULL) +
+    scale_x_date(date_breaks = "1 month", date_labels = "%b") +
+    scale_y_continuous(labels = scales::percent) +
+    labs(x = "Date", y = "Own-species clips")
+```
+
+Change in the proportion of Talamanca rather than Nicaragua clips through time (Bernoulli model, logit link, random intercepts of day and recording within day):
+
+```{r dialect time model}
+fnt <- fd[fd$dialect %in% c("Nicaragua", "Talamanca"), ]
+fnt$talamanca <- as.integer(fnt$dialect == "Talamanca")
+mod10 <- brm(talamanca ~ scale(julian_day) + (1 | day/recording), data = fnt, family = bernoulli(),
+             prior = c(prior(normal(0, 2.5), class = "Intercept"), prior(normal(0, 1), class = "b"), prior(exponential(1), class = "sd")),
+             chains = chains, iter = iter, cores = cores, control = list(adapt_delta = 0.99), seed = 123,
+             file = file.path(fit_dir, "focal_dialect_through_time"), file_refit = "on_change")
+```
+
+```{r mod10 summary}
+#| results: "asis"
+#| fig-height: 3
+
+extended_summary(mod10, n.posterior = 1000, fill = mako(10)[8], trace.palette = mako,
+                 remove.intercepts = FALSE, highlight = TRUE, print.name = FALSE)
+```
+
+## Own song within dialect
+
+For the focal clips assigned to Nicaragua or Talamanca:
+
+- **Consistency within dialect**: cosine distance of each clip to the centroid of the clips of the same dialect recorded on the same day (day × dialect combinations with at least 5 clips). Benchmark: distance of reference clips of the same dialect to the centroid of their own recording (recordings with at least 5 clips)
+- **Similarity within dialect**: neighbour similarity (mean cosine similarity to the 5 most similar clips) to the reference clips of the assigned dialect, subsampled 20 times to the size of the smallest of the two (`r min(table(dfolds$species)[c("Nicaragua", "Talamanca")])` clips), and its typicality percentile among the reference clips of that dialect (scored against clips of the same dialect from other recordings)
+
+```{r within dialect measures}
+dref <- dfolds
+dref$clip <- sub("\\.wav$", "", dref$clip)
+dref <- dref[dref$clip %in% rownames(emb_ref), ]
+dref$snr <- snr$snr[match(dref$clip, snr$clip)]
+
+# consistency within day x dialect
+fnt$day_dialect <- paste(fnt$day, fnt$dialect)
+keep <- names(which(table(fnt$day_dialect) >= 5))
+bd <- fnt[fnt$day_dialect %in% keep, ]
+cent_dd <- t(sapply(split(bd$clip, bd$day_dialect), function(cl) { v <- colMeans(emb_focal[cl, , drop = FALSE]); v / sqrt(sum(v^2)) }))
+bd$distance <- 1 - rowSums(emb_focal[bd$clip, ] * cent_dd[bd$day_dialect, ])
+ref_dd <- do.call(rbind, lapply(split(dref, paste(dref$recording, dref$species)), function(d) {
+    if (nrow(d) < 5) return(NULL)
+    v <- colMeans(emb_ref[d$clip, , drop = FALSE]); v <- v / sqrt(sum(v^2))
+    data.frame(dialect = d$species[1], distance = as.numeric(1 - emb_ref[d$clip, , drop = FALSE] %*% v))
+}))
+
+# neighbour similarity to the reference clips of the assigned dialect
+set.seed(123)
+n_sub_d <- min(table(dref$species)[c("Nicaragua", "Talamanca")])
+fnt$knn_d <- fnt$pct_d <- NA
+for (dl in c("Nicaragua", "Talamanca")) {
+    idx <- which(dref$species == dl)
+    fi <- which(fnt$dialect == dl)
+    fk <- pc <- matrix(NA, length(fi), n_draw)
+    for (dr in seq_len(n_draw)) {
+        sub <- sample(idx, n_sub_d)
+        fk[, dr] <- knn_mean(emb_focal[fnt$clip[fi], ] %*% t(emb_ref[dref$clip[sub], ]))
+        sim_r <- emb_ref[dref$clip[idx], ] %*% t(emb_ref[dref$clip[sub], ])
+        sim_r[outer(dref$recording[idx], dref$recording[sub], "==")] <- -Inf
+        pc[, dr] <- ecdf(knn_mean(sim_r))(fk[, dr])
+    }
+    fnt$knn_d[fi] <- rowMeans(fk); fnt$pct_d[fi] <- rowMeans(pc)
+}
+
+kable(data.frame(Dialect = c("Nicaragua", "Talamanca"),
+                 `Focal clips` = as.numeric(table(fnt$dialect)[c("Nicaragua", "Talamanca")]),
+                 `Day × dialect groups (≥ 5 clips)` = sapply(c("Nicaragua", "Talamanca"), function(dl) length(unique(bd$day_dialect[bd$dialect == dl]))),
+                 `Focal: distance to day × dialect centroid` = tapply(bd$distance, bd$dialect, mean)[c("Nicaragua", "Talamanca")],
+                 `Other bellbirds: distance to recording centroid` = tapply(ref_dd$distance, ref_dd$dialect, mean)[c("Nicaragua", "Talamanca")],
+                 `Focal: neighbour similarity to the dialect` = tapply(fnt$knn_d, fnt$dialect, mean)[c("Nicaragua", "Talamanca")],
+                 `Focal: median typicality percentile` = tapply(fnt$pct_d, fnt$dialect, median)[c("Nicaragua", "Talamanca")],
+                 check.names = FALSE), digits = 3, row.names = FALSE)
+```
+
+Models of the two measures through time, with dialect, its interaction with date and both SNR measures:
+
+```{r within dialect models}
+bd$snr_long <- q$snr_long[match(bd$clip, q$clip)]
+fnt_l <- fnt[!is.na(fnt$snr_long), ]
+bd_l <- bd[!is.na(bd$snr_long), ]
+mod11 <- list(
+    cons = brm(scale(distance) ~ dialect * scale(julian_day) + scale(snr) + scale(snr_long) + (1 | day/recording), data = bd_l,
+               prior = priors5, chains = chains, iter = iter, cores = cores, control = list(adapt_delta = 0.99), seed = 123,
+               file = file.path(fit_dir, "own_song_consistency_within_dialect_through_time"), file_refit = "on_change"),
+    sim = brm(scale(knn_d) ~ dialect * scale(julian_day) + scale(snr) + scale(snr_long) + (1 | day/recording), data = fnt_l,
+              prior = priors5, chains = chains, iter = iter, cores = cores, control = list(adapt_delta = 0.99), seed = 123,
+              file = file.path(fit_dir, "own_song_similarity_within_dialect_through_time"), file_refit = "on_change"),
+    # species-level neighbour similarity of the own song in the same clips, without and with dialect
+    sim_sp0 = brm(scale(knn) ~ scale(julian_day) + scale(snr) + scale(snr_long) + (1 | day/recording), data = fnt_l,
+                  prior = priors5, chains = chains, iter = iter, cores = cores, control = list(adapt_delta = 0.99), seed = 123,
+                  file = file.path(fit_dir, "own_song_similarity_nicaragua_talamanca_through_time"), file_refit = "on_change"),
+    sim_sp = brm(scale(knn) ~ dialect + scale(julian_day) + scale(snr) + scale(snr_long) + (1 | day/recording), data = fnt_l,
+                 prior = priors5, chains = chains, iter = iter, cores = cores, control = list(adapt_delta = 0.99), seed = 123,
+                 file = file.path(fit_dir, "own_song_similarity_adjusted_for_dialect_through_time"), file_refit = "on_change"))
+```
+
+```{r mod11 summary}
+#| results: "asis"
+#| fig-height: 4
+
+for (m in mod11)
+    extended_summary(m, n.posterior = 1000, fill = mako(10)[8], trace.palette = mako,
+                     remove.intercepts = FALSE, highlight = TRUE, print.name = FALSE)
+```
+
+```{r within dialect slopes}
+dialect_slopes <- function(fit, measure) {
+    post <- as_draws_df(fit)
+    s <- cbind(Nicaragua = post$b_scalejulian_day, Talamanca = post$b_scalejulian_day + post[["b_dialectTalamanca:scalejulian_day"]])
+    data.frame(Measure = measure, Dialect = colnames(s), Slope = colMeans(s), `2.5%` = apply(s, 2, quantile, 0.025),
+               `97.5%` = apply(s, 2, quantile, 0.975), check.names = FALSE, row.names = NULL)
+}
+x_sp <- as_draws_df(mod11$sim_sp)$b_scalejulian_day
+x_sp0 <- as_draws_df(mod11$sim_sp0)$b_scalejulian_day
+x_d <- as_draws_df(mod10)$b_scalejulian_day
+sl11 <- rbind(dialect_slopes(mod11$cons, "Distance to day × dialect centroid"),
+              dialect_slopes(mod11$sim, "Neighbour similarity to the dialect"),
+              data.frame(Measure = "Neighbour similarity to Three-wattled Bellbird, not adjusted for dialect", Dialect = "Both", Slope = mean(x_sp0),
+                         `2.5%` = quantile(x_sp0, 0.025), `97.5%` = quantile(x_sp0, 0.975), check.names = FALSE, row.names = NULL),
+              data.frame(Measure = "Neighbour similarity to Three-wattled Bellbird, adjusted for dialect", Dialect = "Both", Slope = mean(x_sp),
+                         `2.5%` = quantile(x_sp, 0.025), `97.5%` = quantile(x_sp, 0.975), check.names = FALSE, row.names = NULL))
+kable(sl11, digits = 3, row.names = FALSE, caption = "Slopes through time (SD per SD of date)")
+
+# per-clip dialect data for the paper figure (presentation/paper_figure_dialects.R)
+fd_out <- fd[, c("clip", "recording", "date", "dialect", "dialect_conf", "snr", "snr_long")]
+fd_out$knn_dialect <- fnt$knn_d[match(fd_out$clip, fnt$clip)]
+write.csv(fd_out, "./data/processed/focal_dialects.csv", row.names = FALSE)
+```
+
+```{r within dialect plot}
+#| fig-width: 10
+#| fig-height: 4
+
+wl <- rbind(data.frame(bd[, c("date", "day", "dialect")], panel = "Distance to day × dialect centroid", value = bd$distance),
+            data.frame(fnt[, c("date", "day", "dialect")], panel = "Neighbour similarity to the dialect", value = fnt$knn_d))
+ggplot(wl, aes(date, value, color = dialect)) +
+    geom_jitter(width = 1.5, height = 0, alpha = 0.3, size = 0.9) +
+    geom_smooth(method = "lm", se = TRUE) +
+    facet_wrap(~ panel, scales = "free_y") +
+    scale_color_manual(values = c(Nicaragua = mako(10)[3], Talamanca = mako(10)[7]), name = NULL) +
+    scale_x_date(date_breaks = "2 months", date_labels = "%b") +
+    labs(x = "Date", y = NULL) +
+    theme(strip.background = element_blank(), legend.position = "top")
+```
+
+Lines: linear fits (for display; the inference is from the models above).
+
+::: {.alert .alert-info}
+
+#### Summary
+
+```{r dialect summary}
+#| results: "asis"
+#| echo: false
+
+ci11 <- function(meas, dl) {
+    r <- sl11[sl11$Measure == meas & sl11$Dialect == dl, ]
+    sprintf("%.2f [95%% UI: %.2f–%.2f]", r$Slope, r[["2.5%"]], r[["97.5%"]])
+}
+cat(sprintf("- The BirdNET dialect classifier (%s) discriminated dialects with out-of-fold macro F1 = %.2f and assigned %d of %d recordings to their annotated dialect\n",
+            d_best, d_metrics$macro[["F1"]], sum(rec_d$true == rec_d$pred), nrow(rec_d)))
+cat("- The focal bellbird's own-species clips were assigned mostly to the Nicaragua and Talamanca dialects (",
+    paste(sprintf("%s %.0f%%", names(table(fd$dialect)), 100 * prop.table(table(fd$dialect))), collapse = ", "),
+    "); the proportion of Talamanca rather than Nicaragua clips increased through time (slope ", sprintf("%.2f [95%% UI: %.2f–%.2f]", mean(x_d), quantile(x_d, 0.025), quantile(x_d, 0.975)),
+    " log-odds per SD of date)\n", sep = "")
+cat("- Distance to the day × dialect centroid through time: Nicaragua ", ci11("Distance to day × dialect centroid", "Nicaragua"),
+    ", Talamanca ", ci11("Distance to day × dialect centroid", "Talamanca"), "; negative values mean more consistent\n", sep = "")
+cat("- Neighbour similarity to the reference clips of the assigned dialect through time: Nicaragua ", ci11("Neighbour similarity to the dialect", "Nicaragua"),
+    ", Talamanca ", ci11("Neighbour similarity to the dialect", "Talamanca"), "\n", sep = "")
+cat("- Neighbour similarity to Three-wattled Bellbird in the same Nicaragua and Talamanca clips: not adjusted for dialect ", ci11("Neighbour similarity to Three-wattled Bellbird, not adjusted for dialect", "Both"),
+    ", adjusted for dialect ", ci11("Neighbour similarity to Three-wattled Bellbird, adjusted for dialect", "Both"), "\n", sep = "")
+```
+
+:::
+
 # Robustness to the hyperparameter configuration
 
 The main results use the selected configuration of each classifier. To check that they do not depend on that choice, the same counts were obtained with each of the configurations compared in the [model fitting](birdnet_model_fitting.qmd) report: focal bellbird clips classified by the 5 fold models of each configuration (ensemble, with that configuration's out-of-fold thresholds), and other bellbirds by its out-of-fold predictions. Configurations whose training diverged were left out.
 
 ```{r robustness data}
 allp <- read.csv(file.path(cv_dir, "predictions_all_configurations.csv"))
+allp <- allp[grepl("^R", allp$config), ] # the random-search configurations
 # configurations whose training diverged (a classifier that leaves over 90% of clips unassigned,
 # never reaching the 0.05 reporting limit in some folds) are left out
 unassigned <- tapply(allp$predicted == "Unassigned", list(allp$config, allp$model), mean)

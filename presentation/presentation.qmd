@@ -624,7 +624,7 @@ Al avanzar (→) suenan los dos en secuencia: campana focal y oropéndola de Moc
 ```
 
 ::: {.notes}
-**Unos 30 s.** Primero anotamos las grabaciones de la campana focal e identificamos las especies que parecía imitar. Con eso definimos las especies de referencia: las simpátricas, sus parientes alopátricos y otros pájaros campana. Descargamos sus grabaciones con suwo, las anotamos, las cortamos en fragmentos de 2 segundos y reentrenamos BirdNET. Finalmente evaluamos el desempeño con grabaciones que el modelo no había visto.
+**Unos 30 s (se suman a los tiempos de las diapositivas siguientes).** ¿Mejoraron las imitaciones? Durante el aprendizaje vocal, las copias suelen volverse más parecidas al modelo y más consistentes. Arriba: semejanza de cada vocalización con las vocalizaciones reales más parecidas de la especie asignada, en el espacio de embeddings genérico de BirdNET, que no depende de nuestros clasificadores. Abajo: consistencia, qué tan parecida es cada vocalización a las demás del mismo tipo cantadas ese día. Ambas están corregidas por la calidad de grabación, con el día de grabación como unidad de replicación. Las imitaciones del tucán y del aracari no se volvieron ni más parecidas ni más consistentes durante la temporada. El canto propio se volvió más parecido al de campana (asterisco: pendiente 0,36, IC 95 %: 0,18–0,53), más que los sonidos tipo tucán de las mismas grabaciones, así que no es un artefacto de grabación; parte se debe a un cambio entre los dos dialectos que canta. Pero no se volvió más consistente. El cambio en el tiempo está en su canto propio, no en qué tan bien imita.
 :::
 
 ## Semejanza vocal {.nostretch}
@@ -1222,6 +1222,63 @@ ggplot(points[points$prop > 0, ], aes(x = date, y = prop, color = species, fill 
 
 ::: {.notes}
 **Hasta 8:55.** Las primeras observaciones están dominadas por sonidos parecidos al tucán y, en menor medida, al aracari. Con el tiempo aumenta la probabilidad de clasificarse como pájaro campana (la única tendencia clara). El tucán tiende a bajar, pero con la variación entre días su intervalo incluye el cero; el aracari tampoco muestra una tendencia clara.
+:::
+
+## ¿Mejoraron las imitaciones? {.titulo-pequeno}
+
+```{r}
+#| label: calidad-imitaciones
+#| fig-width: 10
+#| fig-height: 5.6
+
+# acoustic similarity (generic BirdNET embedding) of each assigned focal bellbird vocalization to the
+# species it was assigned to, and its consistency (similarity to the other vocalizations of the same
+# type recorded the same day), with their trends at average SNR (prepare_slide_data.R)
+q_points <- read.csv("./data/quality_points.csv")
+q_curves <- read.csv("./data/quality_curves.csv")
+q_slopes <- read.csv("./data/quality_slopes.csv")
+
+q_spp <- c("Keel-billed Toucan" = "Ramphastos sulfuratus", "Collared Aracari" = "Pteroglossus torquatus",
+           "Three-wattled Bellbird" = "Procnias tricarunculatus")
+# strips: drawing and abbreviated scientific name of each species
+q_strip <- setNames(sprintf("<img src='%s' height='42'/><br><i>%s</i>", sapply(q_spp, sp_file),
+                            sub("^(\\w)\\w* ", "\\1. ", q_spp)), names(q_spp))
+q_measure <- c(similarity = "Semejanza\nacústica", consistency = "Consistencia")
+# same colour as each species on the change-over-time slide
+q_cols <- setNames(viridis(4, end = 0.8)[c(3, 2, 1)], q_strip)
+
+for (nm in c("q_points", "q_curves", "q_slopes")) {
+    d <- get(nm)
+    d <- d[d$measure %in% names(q_measure), ]
+    if (!is.null(d$date)) d$date <- as.Date(d$date)
+    d$species <- factor(q_strip[d$species], levels = q_strip)
+    d$measure <- factor(q_measure[d$measure], levels = q_measure)
+    assign(nm, d)
+}
+# asterisk on the panels whose slope differs from zero (95% CI excludes 0)
+q_slopes <- q_slopes[sign(q_slopes$low) == sign(q_slopes$high), ]
+
+ggplot(q_points, aes(date, value, colour = species, fill = species)) +
+    geom_jitter(width = 1, height = 0, alpha = 0.18, size = 1.3) +
+    geom_ribbon(data = q_curves, aes(ymin = low, ymax = high), alpha = 0.3, colour = NA) +
+    geom_line(data = q_curves, linewidth = 1.8) +
+    # asterisk just outside the right edge of the panel
+    geom_text(data = q_slopes, aes(x = max(q_points$date) + 12, y = Inf, label = "*"), inherit.aes = FALSE,
+              vjust = 1, hjust = 0, size = 14, fontface = "bold", colour = deck_cols[["texto"]]) +
+    coord_cartesian(clip = "off") +
+    facet_grid(measure ~ species, scales = "free_y", switch = "y") +
+    scale_colour_manual(values = q_cols, guide = "none") +
+    scale_fill_manual(values = q_cols, guide = "none") +
+    scale_x_date(breaks = as.Date(sprintf("2020-%02d-01", c(4, 7, 10))), labels = c("abr", "jul", "oct")) +
+    labs(x = "2020", y = NULL) +
+    theme(strip.background = element_blank(), strip.placement = "outside",
+          strip.text.x = ggtext::element_markdown(size = base_size * 0.9),
+          strip.text.y.left = element_text(angle = 90, size = base_size * 0.9, face = "bold"),
+          panel.spacing.x = grid::unit(1.6, "lines"), plot.margin = margin(5, 25, 5, 5))
+```
+
+::: {.notes}
+**Unos 30 s (se suman a los tiempos de las diapositivas siguientes).** ¿Mejoraron las imitaciones? Para cada vocalización asignada a una especie medimos la confianza del clasificador (arriba) y su semejanza con las grabaciones de referencia de esa especie en el espacio de embeddings genérico de BirdNET (abajo), que no depende de nuestros clasificadores. Las imitaciones del tucán y del aracari no mejoraron durante la temporada (todos los intervalos incluyen el cero; la confianza para el tucán, si acaso, baja un poco). El canto propio se volvió más parecido al de campana para el clasificador (asterisco: pendiente de la confianza 0,30, IC 95 %: 0,16–0,44), pero no en la semejanza acústica genérica, y no se volvió más consistente dentro de cada día (9 días, 434 vocalizaciones). El cambio en el tiempo está en qué canta, más que en qué tan bien imita.
 :::
 
 ## {.video-subtitulo background-video="images/hanging_with_models_short_web.mp4" background-size="contain" background-color="black"}

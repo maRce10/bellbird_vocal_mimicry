@@ -79,6 +79,38 @@ grid$date <- as.Date(grid$julian_day - 1, origin = "2020-01-01")
 names(grid)[names(grid) == "pred_common_name"] <- "species"
 write.csv(grid, file.path(out_data, "temporal_curves.csv"), row.names = FALSE)
 
+# ---- quality of the imitations and of the own song through time --------------------------
+# acoustic similarity (mean cosine similarity of the generic BirdNET embedding to the 5 most similar
+# reference clips of the species) and consistency (cosine similarity to the leave-one-out centroid
+# of the clips of the same type recorded the same day) of each assigned focal clip, and their
+# population-level trends at average SNR (and group size). Final models of statistical_analysis_cv.qmd
+qfits <- list(similarity = readRDS("data/processed/cv_fits/imitation_knn_snr2_through_time.rds"),
+              consistency = readRDS("data/processed/cv_fits/consistency_by_type_through_time.rds"))
+resp <- c(similarity = "knn", consistency = "consistency")
+spp_levels <- levels(qfits$similarity$data$species)
+qpoints <- qcurves <- qslopes <- list()
+for (m in names(qfits)) {
+  d <- qfits[[m]]$data
+  d$date <- as.Date(d$julian_day - 1, origin = "2020-01-01")
+  qpoints[[m]] <- data.frame(date = d$date, species = as.character(d$species), measure = m, value = d[[resp[[m]]]])
+  g <- expand.grid(julian_day = seq(min(d$julian_day), max(d$julian_day), length.out = 60), species = spp_levels,
+                   stringsAsFactors = FALSE)
+  g$snr <- mean(d$snr); g$snr_long <- mean(d$snr_long)
+  if (!is.null(d$n_group)) g$n_group <- exp(mean(log(d$n_group)))
+  ep <- posterior_epred(qfits[[m]], newdata = g, re_formula = NA) * sd(d[[resp[[m]]]]) + mean(d[[resp[[m]]]])
+  qcurves[[m]] <- data.frame(date = as.Date(g$julian_day - 1, origin = "2020-01-01"), species = g$species, measure = m,
+                             value = colMeans(ep), low = apply(ep, 2, quantile, 0.025), high = apply(ep, 2, quantile, 0.975))
+  post <- as_draws_df(qfits[[m]])
+  base <- post$b_scalejulian_day
+  sl <- cbind(base, base + post[["b_speciesCollaredAracari:scalejulian_day"]],
+              base + post[["b_speciesThreeMwattledBellbird:scalejulian_day"]])
+  qslopes[[m]] <- data.frame(measure = m, species = spp_levels, slope = colMeans(sl),
+                             low = apply(sl, 2, quantile, 0.025), high = apply(sl, 2, quantile, 0.975))
+}
+write.csv(do.call(rbind, qpoints), file.path(out_data, "quality_points.csv"), row.names = FALSE)
+write.csv(do.call(rbind, qcurves), file.path(out_data, "quality_curves.csv"), row.names = FALSE)
+write.csv(do.call(rbind, qslopes), file.path(out_data, "quality_slopes.csv"), row.names = FALSE)
+
 # ---- numbers quoted on the slides --------------------------------------------------------
 fit1 <- readRDS("data/processed/cv_fits/sympatric_allopatric_focal.rds")
 p <- plogis(as_draws_df(fit1)$b_Intercept)

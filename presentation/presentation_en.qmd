@@ -872,6 +872,63 @@ ggplot(points[points$prop > 0, ], aes(x = date, y = prop, color = species, fill 
 **By 8:55.** The first observations are dominated by toucan-like sounds and, to a lesser extent, aracari-like sounds. Over time the probability of being classified as a bellbird increases (the only clear trend). The toucan tends to decrease, but with the day-to-day variation its interval includes zero; the aracari shows no clear trend either.
 :::
 
+## Did the imitations improve? {.titulo-pequeno}
+
+```{r}
+#| label: imitation-quality
+#| fig-width: 10
+#| fig-height: 5.6
+
+# acoustic similarity (generic BirdNET embedding) of each assigned focal bellbird vocalization to the
+# species it was assigned to, and its consistency (similarity to the other vocalizations of the same
+# type recorded the same day), with their trends at average SNR (prepare_slide_data.R)
+q_points <- read.csv("./data/quality_points.csv")
+q_curves <- read.csv("./data/quality_curves.csv")
+q_slopes <- read.csv("./data/quality_slopes.csv")
+
+q_spp <- c("Keel-billed Toucan" = "Ramphastos sulfuratus", "Collared Aracari" = "Pteroglossus torquatus",
+           "Three-wattled Bellbird" = "Procnias tricarunculatus")
+# strips: drawing and abbreviated scientific name of each species
+q_strip <- setNames(sprintf("<img src='%s' height='42'/><br><i>%s</i>", sapply(q_spp, sp_file),
+                            sub("^(\\w)\\w* ", "\\1. ", q_spp)), names(q_spp))
+q_measure <- c(similarity = "Acoustic\nsimilarity", consistency = "Consistency")
+# same colour as each species on the change-over-time slide
+q_cols <- setNames(viridis(4, end = 0.8)[c(3, 2, 1)], q_strip)
+
+for (nm in c("q_points", "q_curves", "q_slopes")) {
+    d <- get(nm)
+    d <- d[d$measure %in% names(q_measure), ]
+    if (!is.null(d$date)) d$date <- as.Date(d$date)
+    d$species <- factor(q_strip[d$species], levels = q_strip)
+    d$measure <- factor(q_measure[d$measure], levels = q_measure)
+    assign(nm, d)
+}
+# asterisk on the panels whose slope differs from zero (95% CI excludes 0)
+q_slopes <- q_slopes[sign(q_slopes$low) == sign(q_slopes$high), ]
+
+ggplot(q_points, aes(date, value, colour = species, fill = species)) +
+    geom_jitter(width = 1, height = 0, alpha = 0.18, size = 1.3) +
+    geom_ribbon(data = q_curves, aes(ymin = low, ymax = high), alpha = 0.3, colour = NA) +
+    geom_line(data = q_curves, linewidth = 1.8) +
+    # asterisk just outside the right edge of the panel
+    geom_text(data = q_slopes, aes(x = max(q_points$date) + 12, y = Inf, label = "*"), inherit.aes = FALSE,
+              vjust = 1, hjust = 0, size = 14, fontface = "bold", colour = deck_cols[["texto"]]) +
+    coord_cartesian(clip = "off") +
+    facet_grid(measure ~ species, scales = "free_y", switch = "y") +
+    scale_colour_manual(values = q_cols, guide = "none") +
+    scale_fill_manual(values = q_cols, guide = "none") +
+    scale_x_date(breaks = as.Date(sprintf("2020-%02d-01", c(4, 7, 10))), labels = c("Apr", "Jul", "Oct")) +
+    labs(x = "2020", y = NULL) +
+    theme(strip.background = element_blank(), strip.placement = "outside",
+          strip.text.x = ggtext::element_markdown(size = base_size * 0.9),
+          strip.text.y.left = element_text(angle = 90, size = base_size * 0.9, face = "bold"),
+          panel.spacing.x = grid::unit(1.6, "lines"), plot.margin = margin(5, 25, 5, 5))
+```
+
+::: {.notes}
+**About 30 s (it adds to the times of the following slides).** Did the imitations get better? During vocal learning, copies usually become more similar to the target and more consistent. Top: similarity of each vocalization to the closest real vocalizations of the species it was assigned to, in the generic BirdNET embedding space, which does not depend on our classifiers. Bottom: consistency, how similar each vocalization is to the others of the same type sung that day. Both are corrected for recording quality, with recording day as the unit of replication. The toucan and aracari imitations became neither more similar nor more consistent over the season. The bellbird's own song became more bellbird-like (asterisk: slope 0.36, 95% CI 0.18–0.53), more so than the toucan-like sounds from the same recordings, so it is not a recording artifact; part of this comes from a shift between the two dialects it sings. But it did not become more consistent. So the change over time is in its own song, not in how well it imitates.
+:::
+
 ## {.video-subtitulo background-video="images/hanging_with_models_short_web.mp4" background-size="contain" background-color="black"}
 
 

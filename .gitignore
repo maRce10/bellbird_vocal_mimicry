@@ -28,6 +28,10 @@ Rplots.pdf
 !/data/processed/birdnet_cv/*_predictions_*.csv
 !/data/processed/birdnet_cv/random_search_configs.csv
 !/data/processed/birdnet_cv/selected_configurations.csv
+!/data/processed/birdnet_cv_dialect/
+!/data/processed/birdnet_cv_dialect/dialect_labels.csv
+!/data/processed/birdnet_cv_dialect/folds.csv
+!/data/processed/focal_dialects.csv
 /deprecated/
 /embedding_model/
 /scripts/embedding_model/
