@@ -34,6 +34,7 @@ knitr::opts_chunk$set(message = FALSE, warning = FALSE)
 sketchy::load_packages(packages = c("knitr", "ggplot2", "viridis", "brms", "brmsish", "cowplot", "kableExtra"))
 
 theme_set(theme_classic(base_size = 14))
+invisible(Sys.setlocale("LC_TIME", "C")) # English month names
 options(knitr.kable.NA = "")
 
 source("scripts/birdnet_cv_functions.R")
@@ -430,6 +431,224 @@ ggplot(dat[dat$prop > 0, ], aes(date, prop, fill = pred_common_name, color = pre
 
 - The proportion of focal bellbird vocalizations classified as its own species increased over time (slope `r round(sl3$Slope[sl3$Category == "Three-wattled Bellbird"], 2)` [95% UI: `r round(sl3[["2.5%"]][sl3$Category == "Three-wattled Bellbird"], 2)`–`r round(sl3[["97.5%"]][sl3$Category == "Three-wattled Bellbird"], 2)`])
 - The proportions classified as Keel-billed Toucan and Collared Aracari tended to decrease, but their intervals include zero; unassigned vocalizations showed no trend
+
+:::
+
+# Quality of imitations and consistency of own song through time
+
+Did the imitations get closer to their models over time, and did the focal bellbird's own song get closer to that of other bellbirds and more consistent? Each focal bellbird clip classified by the sympatric-only classifier is described by two measures of similarity to the species it was assigned to:
+
+- **Classifier confidence**: the ensemble confidence of the sympatric-only classifier for the assigned species
+- **Acoustic similarity**: cosine similarity between the clip's BirdNET embedding (the generic BirdNET model, not the custom classifiers) and the centroid of the reference clips of that species. This measure does not depend on the trained classifiers
+
+Consistency of the own song is the cosine distance of each clip classified as Three-wattled Bellbird to the centroid of the clips classified as Three-wattled Bellbird on the same day (days with at least 5 such clips). Only clips assigned to a species are used, so the measures describe how good the imitations (or own songs) were, not how many there were (see [Mimicry through time](#mimicry-through-time)).
+
+```{r quality data}
+read_emb <- function(f) {
+    e <- read.csv(f, encoding = "latin1")
+    clip <- sub("\\.wav$", "", sub(".*\\\\", "", iconv(e$file_path, "latin1", "UTF-8")))
+    m <- do.call(rbind, lapply(strsplit(e$embedding, ","), as.numeric))
+    m <- m / sqrt(rowSums(m^2)) # unit length, so that dot products are cosine similarities
+    rownames(m) <- clip
+    m
+}
+emb_focal <- read_emb("./data/processed/embeddings/embeddings_mimic.csv")
+emb_ref <- read_emb("./data/processed/embeddings/embeddings_sympatric_allopatric_spp.csv")
+ref_sp <- folds$species[match(paste0(rownames(emb_ref), ".wav"), folds$clip)]
+
+quality_spp <- c("Ramphastos sulfuratus", "Pteroglossus torquatus", "Procnias tricarunculatus")
+centroids <- t(sapply(quality_spp, function(sp) {
+    v <- colMeans(emb_ref[ref_sp == sp, ])
+    v / sqrt(sum(v^2))
+}))
+
+q <- fp[fp$predicted %in% quality_spp, ]
+q$confidence <- q[cbind(seq_len(nrow(q)), match(q$predicted, names(q)))]
+q$confidence <- as.numeric(q$confidence)
+q$similarity <- rowSums(emb_focal[q$clip, ] * centroids[q$predicted, ])
+q$species <- factor(common_names[q$predicted], levels = common_names[quality_spp])
+q$julian_day <- as.numeric(format(q$date, "%j"))
+q$day <- factor(q$date)
+
+# benchmark: similarity of the reference clips of each species to their own centroid
+ref_sim <- sapply(quality_spp, function(sp) mean(emb_ref[ref_sp == sp, ] %*% centroids[sp, ]))
+
+kable(data.frame(Species = levels(q$species), Clips = as.numeric(table(q$species)),
+                 Days = tapply(q$day, q$species, function(x) length(unique(x))),
+                 `Mean confidence` = tapply(q$confidence, q$species, mean),
+                 `Mean similarity` = tapply(q$similarity, q$species, mean),
+                 `Similarity of the reference clips` = ref_sim, check.names = FALSE),
+      digits = 3, row.names = FALSE)
+```
+
+## Similarity to the assigned species
+
+Gaussian models of each measure with Julian day, its interaction with species and the recording as a random intercept. Confidence is modelled on the logit scale.
+
+```{r quality models}
+q$logit_confidence <- qlogis(pmin(pmax(q$confidence, 0.001), 0.999))
+priors4 <- c(prior(normal(0, 1), class = "b"), prior(exponential(1), class = "sd"),
+             prior(exponential(1), class = "sigma"))
+
+mod4_sim <- brm(scale(similarity) ~ species * scale(julian_day) + (1 | recording), data = q,
+                prior = priors4, chains = chains, iter = iter, cores = cores,
+                control = list(adapt_delta = 0.99), seed = 123,
+                file = file.path(fit_dir, "imitation_similarity_through_time"), file_refit = "on_change")
+mod4_conf <- brm(logit_confidence ~ species * scale(julian_day) + (1 | recording), data = q,
+                 prior = priors4, chains = chains, iter = iter, cores = cores,
+                 control = list(adapt_delta = 0.99), seed = 123,
+                 file = file.path(fit_dir, "imitation_confidence_through_time"), file_refit = "on_change")
+```
+
+```{r mod4 summary}
+#| results: "asis"
+#| fig-height: 5
+
+extended_summary(mod4_sim, n.posterior = 1000, fill = mako(10)[8], trace.palette = mako,
+                 remove.intercepts = FALSE, highlight = TRUE, print.name = FALSE)
+extended_summary(mod4_conf, n.posterior = 1000, fill = mako(10)[8], trace.palette = mako,
+                 remove.intercepts = FALSE, highlight = TRUE, print.name = FALSE)
+```
+
+```{r mod4 ppc}
+#| fig-height: 3
+
+custom_ppc(mod4_sim)
+custom_ppc(mod4_conf)
+```
+
+Slope of each species (per SD of Julian day; similarity in SD units, confidence in log-odds):
+
+```{r quality slopes}
+species_slopes <- function(fit, measure) {
+    post <- as_draws_df(fit)
+    base <- post$b_scalejulian_day
+    s <- cbind(base,
+               base + post[["b_speciesCollaredAracari:scalejulian_day"]],
+               base + post[["b_speciesThreeMwattledBellbird:scalejulian_day"]])
+    colnames(s) <- levels(q$species)
+    data.frame(Measure = measure, Species = colnames(s), Slope = colMeans(s),
+               `2.5%` = apply(s, 2, quantile, 0.025), `97.5%` = apply(s, 2, quantile, 0.975),
+               check.names = FALSE, row.names = NULL)
+}
+sl4 <- rbind(species_slopes(mod4_sim, "Acoustic similarity"), species_slopes(mod4_conf, "Classifier confidence"))
+kable(sl4, digits = 3, row.names = FALSE)
+```
+
+```{r quality plot}
+#| fig-width: 10
+#| fig-height: 6
+
+ql <- rbind(data.frame(q[, c("date", "species")], measure = "Acoustic similarity", value = q$similarity),
+            data.frame(q[, c("date", "species")], measure = "Classifier confidence", value = q$confidence))
+nd4 <- expand.grid(julian_day = seq(min(q$julian_day), max(q$julian_day), length.out = 50),
+                   species = levels(q$species))
+nd4$date <- as.Date(nd4$julian_day - 1, origin = paste0(format(q$date[1], "%Y"), "-01-01"))
+sim_fit <- posterior_epred(mod4_sim, newdata = nd4, re_formula = NA)
+sim_fit <- sim_fit * sd(q$similarity) + mean(q$similarity) # back from the scaled response
+conf_fit <- plogis(posterior_epred(mod4_conf, newdata = nd4, re_formula = NA))
+fits <- rbind(data.frame(nd4, measure = "Acoustic similarity", value = colMeans(sim_fit),
+                         low = apply(sim_fit, 2, quantile, 0.025), high = apply(sim_fit, 2, quantile, 0.975)),
+              data.frame(nd4, measure = "Classifier confidence", value = colMeans(conf_fit),
+                         low = apply(conf_fit, 2, quantile, 0.025), high = apply(conf_fit, 2, quantile, 0.975)))
+
+ggplot(ql, aes(date, value, color = species, fill = species)) +
+    geom_jitter(width = 1, height = 0, alpha = 0.25, size = 1) +
+    geom_ribbon(data = fits, aes(ymin = low, ymax = high), alpha = 0.2, color = NA) +
+    geom_line(data = fits, linewidth = 1.2) +
+    facet_grid(measure ~ species, scales = "free_y") +
+    scale_color_viridis_d(end = 0.8, guide = "none") +
+    scale_fill_viridis_d(end = 0.8, guide = "none") +
+    scale_x_date(date_breaks = "2 months", date_labels = "%b") +
+    labs(x = "Date", y = NULL) +
+    theme(strip.background = element_blank())
+```
+
+Lines and bands: posterior mean and 95% interval of the population-level fit.
+
+## Consistency of the own song
+
+```{r consistency}
+b <- q[q$species == "Three-wattled Bellbird", ]
+day_n <- table(b$day)
+b <- b[b$day %in% names(day_n)[day_n >= 5], ]
+b$day <- droplevels(b$day)
+day_centroid <- t(sapply(split(b$clip, b$day), function(cl) {
+    v <- colMeans(emb_focal[cl, , drop = FALSE])
+    v / sqrt(sum(v^2))
+}))
+b$distance <- 1 - rowSums(emb_focal[b$clip, ] * day_centroid[as.character(b$day), ])
+
+# benchmark: distance of other bellbirds' clips to the centroid of their own recording
+ref_b <- rownames(emb_ref)[ref_sp == "Procnias tricarunculatus"]
+ref_rec <- folds$recording[match(paste0(ref_b, ".wav"), folds$clip)]
+ref_dist <- unlist(lapply(split(ref_b, ref_rec), function(cl) {
+    if (length(cl) < 5) return(NULL)
+    v <- colMeans(emb_ref[cl, , drop = FALSE]); v <- v / sqrt(sum(v^2))
+    1 - emb_ref[cl, , drop = FALSE] %*% v
+}))
+
+kable(data.frame(Days = nlevels(b$day), Clips = nrow(b), `Mean distance to day centroid` = mean(b$distance),
+                 `Other bellbirds: mean distance to recording centroid` = mean(ref_dist), check.names = FALSE),
+      digits = 3, row.names = FALSE)
+
+mod5 <- brm(scale(distance) ~ scale(julian_day) + (1 | day), data = b,
+            prior = c(prior(normal(0, 1), class = "b"), prior(exponential(1), class = "sd"),
+                      prior(exponential(1), class = "sigma")),
+            chains = chains, iter = iter, cores = cores, control = list(adapt_delta = 0.99), seed = 123,
+            file = file.path(fit_dir, "own_song_consistency_through_time"), file_refit = "on_change")
+```
+
+```{r mod5 summary}
+#| results: "asis"
+#| fig-height: 3
+
+extended_summary(mod5, n.posterior = 1000, fill = mako(10)[8], trace.palette = mako,
+                 remove.intercepts = FALSE, highlight = TRUE, print.name = FALSE)
+```
+
+```{r mod5 ppc}
+#| fig-height: 3
+
+custom_ppc(mod5)
+```
+
+```{r consistency plot}
+#| fig-width: 7
+#| fig-height: 4
+
+sl5 <- as_draws_df(mod5)$b_scalejulian_day
+ggplot(b, aes(date, distance)) +
+    geom_hline(yintercept = mean(ref_dist), linetype = 2, color = "grey50") +
+    geom_boxplot(aes(group = day), outlier.shape = NA, fill = mako(10)[7], alpha = 0.5, width = 6) +
+    geom_jitter(width = 1.5, height = 0, alpha = 0.3, size = 1) +
+    scale_x_date(date_breaks = "1 month", date_labels = "%b") +
+    labs(x = "Date", y = "Distance to the day centroid\n(1 - cosine similarity)")
+```
+
+Each box is a day. Dashed line: mean distance of other bellbirds' clips to the centroid of their own recording.
+
+::: {.alert .alert-info}
+
+#### Summary
+
+```{r quality summary}
+#| results: "asis"
+#| echo: false
+
+fmt <- function(m, sp) {
+    r <- sl4[sl4$Measure == m & sl4$Species == sp, ]
+    sprintf("%.2f [95%% UI: %.2f–%.2f]", r$Slope, r[["2.5%"]], r[["97.5%"]])
+}
+cat("- Acoustic similarity to the assigned species through time (slope, SD per SD of date): Keel-billed Toucan ",
+    fmt("Acoustic similarity", "Keel-billed Toucan"), ", Collared Aracari ", fmt("Acoustic similarity", "Collared Aracari"),
+    ", Three-wattled Bellbird ", fmt("Acoustic similarity", "Three-wattled Bellbird"), "\n", sep = "")
+cat("- Classifier confidence through time (slope, log-odds per SD of date): Keel-billed Toucan ",
+    fmt("Classifier confidence", "Keel-billed Toucan"), ", Collared Aracari ", fmt("Classifier confidence", "Collared Aracari"),
+    ", Three-wattled Bellbird ", fmt("Classifier confidence", "Three-wattled Bellbird"), "\n", sep = "")
+cat(sprintf("- Distance of own-species clips to their day centroid through time (slope, SD per SD of date): %.2f [95%% UI: %.2f–%.2f]; negative values mean the own song became more consistent\n",
+            mean(sl5), quantile(sl5, 0.025), quantile(sl5, 0.975)))
+```
 
 :::
 
