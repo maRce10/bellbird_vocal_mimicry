@@ -12,7 +12,9 @@ The vocalizations of the focal individual were classified mostly as sympatric sp
 ## Contents
 
 - **[Data preparation](scripts/birdnet_acoustic_data_prep.qmd)**: annotations, selection tables and export of the data for BirdNET
+- **[Model fitting](scripts/birdnet_model_fitting.qmd)**: training the BirdNET classifiers from code (seed 123), their evaluation and the classification of the clips
 - **[Statistical analysis](scripts/statistical_analysis.qmd)**: classifiers, Bayesian models and changes over time
+- **[Statistical analysis with cross-validated classifiers](scripts/statistical_analysis_cv.qmd)**: the same analyses with the cross-validated BirdNET classifiers, and their comparison
 - **Presentation**: slides of the talk, in [English](presentation_en.qmd) and [Spanish](presentation.qmd), with the spectrograms and their sounds
 
 ## Main results

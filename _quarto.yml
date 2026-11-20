@@ -6,7 +6,9 @@ project:
     - presentation.qmd
     - presentation_en.qmd
     - scripts/birdnet_acoustic_data_prep.qmd
+    - scripts/birdnet_model_fitting.qmd
     - scripts/statistical_analysis.qmd
+    - scripts/statistical_analysis_cv.qmd
   resources:
     - presentation/presentation.html
     - presentation/presentation_en.html
@@ -27,8 +29,14 @@ website:
         text: Home
       - href: scripts/birdnet_acoustic_data_prep.qmd
         text: Data preparation
-      - href: scripts/statistical_analysis.qmd
-        text: Statistical analysis
+      - href: scripts/birdnet_model_fitting.qmd
+        text: Model fitting
+      - text: Statistical analysis
+        menu:
+          - href: scripts/statistical_analysis.qmd
+            text: GUI classifiers
+          - href: scripts/statistical_analysis_cv.qmd
+            text: Cross-validated classifiers
       - text: Presentation
         menu:
           - href: presentation_en.qmd
