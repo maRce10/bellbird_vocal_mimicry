@@ -95,6 +95,6 @@ Photos: David Jimenez
 
 ![Vocalizations of the focal bellbird (left) next to those of its apparent models, the Montezuma Oropendola, the Collared Aracari and the Keel-billed Toucan, and of its own species (middle), with photos of the focal bellbird (right)](output/mimicry_composite_figure.png){group="results"}
 
-![Vocalizations classified as each heterospecific species by the classifier trained with sympatric and allopatric species. The focal bellbird was classified as the sympatric species of each pair (blue) about 16 times more often than as its allopatric relative (purple); other bellbirds, each classified by a model that never heard its recording, were almost never classified as another species.](output/sympatric_vs_allopatric_barplot.png){group="results"}
+![Vocalizations classified as each heterospecific species by the classifier trained with sympatric and allopatric species. The focal bellbird was classified as the sympatric species of each pair (blue) about 10 times more often than as its allopatric relative (purple); other bellbirds, each classified by a model that never heard its recording, were almost never classified as another species.](output/sympatric_vs_allopatric_barplot.png){group="results"}
 
 :::

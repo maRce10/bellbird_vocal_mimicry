@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # 5-fold cross-validation of the custom BirdNET classifiers, grouped by recording.
 #
-# For each hyperparameter configuration (A, B, C), model (sympatric_and_allopatric,
+# For each hyperparameter configuration (A, B, C and the random ones, R01...), model (sympatric_and_allopatric,
 # sympatric) and fold: train on the other folds (seed 123, bandpass 400-12000 Hz,
 # early stopping on a random 20% of the training clips), then classify the held-out
 # fold (2 s clips) and the focal bellbird clips.
@@ -36,9 +36,13 @@ config_args() {
         B) echo "--hidden_units 256 --dropout 0.5 --batch_size 16 --learning_rate 0.002 --upsampling_mode repeat --upsampling_ratio 0.33 --mixup" ;;
         # C: BirdNET defaults (linear classifier, no dropout, mixup, upsampling or focal loss)
         C) echo "--hidden_units 0 --dropout 0 --batch_size 32 --learning_rate 0.0001 --upsampling_mode repeat --upsampling_ratio 0" ;;
+        # R01, R02, ...: random configurations drawn by scripts/birdnet_random_search.py
+        R*) "$PY" -I -c "import csv,sys; print(next(r['args'] for r in csv.DictReader(open(sys.argv[1])) if r['config'] == sys.argv[2]))" \
+                "$CV/random_search_configs.csv" "$1" ;;
     esac
 }
 CONFIGS=${CONFIGS:-"A B C"}
+# all random configurations: CONFIGS="$(cut -d, -f1 data/processed/birdnet_cv/random_search_configs.csv | tail -n +2)"
 
 if [[ $STEP == all || $STEP == folds ]]; then
     "$PY" -I "$PROJECT/scripts/birdnet_cv_folds.py" "$DATA" "$CV" --k "$K" --seed "$SEED"

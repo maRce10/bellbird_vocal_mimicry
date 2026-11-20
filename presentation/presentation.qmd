@@ -1116,7 +1116,7 @@ bias_plot(show_other = TRUE)
 </div>
 
 ::: {.notes}
-**Hasta 7:30.** Ahora los otros pájaros campana: sin este sesgo. Cuando la campana focal se clasifica como otra especie, el 95 % de las veces es la simpátrica (IC 95 %: 93–97 %), unas 16 veces más que su pariente alopátrico (811 vs. 50 vocalizaciones); por azar esperaríamos mitad y mitad. Los otros campanas, cada uno clasificado por un modelo que nunca escuchó su grabación, casi nunca se clasifican como otra especie: 9 de 800 vocalizaciones. Esto apoya el mimetismo genuino.
+**Hasta 7:30.** Ahora los otros pájaros campana: sin este sesgo. Cuando la campana focal se clasifica como otra especie, el 93 % de las veces es la simpátrica (IC 95 %: 90–95 %), unas 10 veces más que su pariente alopátrico (807 vs. 80 vocalizaciones); por azar esperaríamos mitad y mitad. Los otros campanas, cada uno clasificado por un modelo que nunca escuchó su grabación, casi nunca se clasifican como otra especie: 9 de 800 vocalizaciones. Esto apoya el mimetismo genuino.
 :::
 
 ## Semejanza a simpátricas {.desempeno .titulo-pequeno}
@@ -1346,18 +1346,18 @@ En ambos casos, adquirir sonidos heteroespecíficos **implica aprendizaje vocal*
 
 ::: {.column width="50%"}
 <div class="cifra-texto"><b>Campana focal</b></div>
-<div class="cifra">0,95</div>
+<div class="cifra">0,93</div>
 <div class="cifra-texto">probabilidad de clasificarse como <span class="simp">simpátrica</span></div>
 <br>
-<div class="cifra-texto">Chances <span class="simp">simpátrica</span> vs. <span class="alop">alopátrica</span>:<br><b>19,67</b> (IC 95%: 13,21–34,46)</div>
+<div class="cifra-texto">Chances <span class="simp">simpátrica</span> vs. <span class="alop">alopátrica</span>:<br><b>12,37</b> (IC 95%: 8,85–18,96)</div>
 :::
 
 ::: {.column width="50%"}
 <div class="cifra-texto"><b>Otros campanas</b></div>
-<div class="cifra">0,77</div>
+<div class="cifra">0,64</div>
 <div class="cifra-texto">probabilidad de clasificarse como <span class="simp">simpátrica</span></div>
 <br>
-<div class="cifra-texto">Chances <span class="simp">simpátrica</span> vs. <span class="alop">alopátrica</span>:<br><b>3,28</b> (IC 95%: 0,66–20,14)</div>
+<div class="cifra-texto">Chances <span class="simp">simpátrica</span> vs. <span class="alop">alopátrica</span>:<br><b>1,74</b> (IC 95%: 0,38–8,75)</div>
 :::
 
 ::::

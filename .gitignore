@@ -26,6 +26,8 @@ Rplots.pdf
 !/data/processed/birdnet_cv/
 !/data/processed/birdnet_cv/folds.csv
 !/data/processed/birdnet_cv/*_predictions_*.csv
+!/data/processed/birdnet_cv/random_search_configs.csv
+!/data/processed/birdnet_cv/selected_configurations.csv
 /deprecated/
 /embedding_model/
 /scripts/embedding_model/

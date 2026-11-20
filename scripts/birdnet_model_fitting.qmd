@@ -41,14 +41,15 @@ source("scripts/birdnet_cv_functions.R")
 
 models <- c("sympatric_and_allopatric", "sympatric")
 model_labels <- c(sympatric_and_allopatric = "Sympatric + allopatric", sympatric = "Sympatric only")
-configs <- c("A", "B", "C")
+random_configs <- read.csv(file.path(cv_dir, "random_search_configs.csv"))
+configs <- c("A", "B", "C", random_configs$config)
 short <- function(x) ifelse(x == "Unassigned", x, sub("^(\\w)\\w+ ", "\\1. ", x))
 ```
 
 # Purpose
 
 - Train the two custom BirdNET classifiers from code, with a fixed random seed (123), so the fitting is reproducible
-- Choose the hyperparameters and the classification thresholds, and estimate the performance of the classifiers, by 5-fold cross-validation grouped by recording
+- Choose the hyperparameters (among 33 configurations, 30 of them drawn at random) and the classification thresholds, and estimate the performance of the classifiers, by 5-fold cross-validation grouped by recording
 - Classify the vocalizations of other bellbirds and of the focal bellbird with models that never heard them
 
 The two classifiers are:
@@ -76,11 +77,13 @@ clips[, c("Species", "Type", "Recordings", "Clips")]
 - For each fold, the classifiers were trained on the other 4 folds and classified the held-out fold, so every clip has one out-of-fold prediction from a model that never heard its recording
 - Training stops early on a random 20% of the training clips (the held-out fold is not used for training in any way), up to 50 epochs; the weights of the best epoch are kept
 - Training and classification use a 400–12,000 Hz bandpass, BirdNET-Analyzer v2.4 and seed 123
-- Three hyperparameter configurations were compared for each classifier:
+- 33 hyperparameter configurations were compared for each classifier:
     - **A**: 2,048 hidden units, dropout 0.5, batch size 64, learning rate 0.001, mixup and focal loss (α 0.75, γ 0.5)
     - **B**: 256 hidden units, dropout 0.5, batch size 16, learning rate 0.002, mixup and upsampling of the rare classes to 33% of the largest one
     - **C**: BirdNET defaults: linear classifier (no hidden layer), no dropout, batch size 32, learning rate 0.0001, no mixup, upsampling or focal loss
-- The selection rule was set before looking at the results: the configuration with the highest macro-averaged AUPRC on the out-of-fold predictions (threshold-free), judged separately for each classifier
+    - **R01–R30**: random search (seed 123, [`scripts/birdnet_random_search.py`](https://github.com/maRce10/bellbird_vocal_mimicry/blob/master/scripts/birdnet_random_search.py)) over the search space of BirdNET-Analyzer's built-in tuner: hidden units (0–2,048), dropout (0–0.9), batch size (8–128) with its own set of learning rates (0.0001–0.1), upsampling ratio (0–1) and mode (repeat, mean, linear), mixup, label smoothing and focal loss (γ 0.5–4, α 0.1–0.9)
+- The selection rule was set before looking at the results of the random search, and uses only the reference species (never the focal bellbird), separately for each classifier: the score is the macro-averaged AUPRC of the out-of-fold predictions (threshold-free, every species weighted equally), and among the configurations within one standard error of the best one (SD across folds / √5) the simplest is chosen (one-standard-error rule): fewest hidden units, then fewest added techniques (focal loss, mixup, label smoothing, upsampling), then lowest dropout
+- The out-of-fold score of the best of 33 configurations is optimistic, because part of its advantage is chance. To estimate the performance of the whole procedure (search, selection and threshold tuning), for each fold the configuration was chosen and its thresholds tuned on the other 4 folds only, and it was then scored on that fold
 - Per-species thresholds are the ones that maximize F1 on the out-of-fold predictions (0.05 steps); a clip is assigned to the species with the highest confidence if it reaches that species' threshold, otherwise it is left unassigned
 
 The whole pipeline is run with [`scripts/birdnet_cv.sh`](https://github.com/maRce10/bellbird_vocal_mimicry/blob/master/scripts/birdnet_cv.sh). It assigns the folds with [`scripts/birdnet_cv_folds.py`](https://github.com/maRce10/bellbird_vocal_mimicry/blob/master/scripts/birdnet_cv_folds.py) and trains through [`scripts/train_birdnet.py`](https://github.com/maRce10/bellbird_vocal_mimicry/blob/master/scripts/train_birdnet.py), a wrapper of BirdNET-Analyzer that seeds Python, NumPy and TensorFlow (weights, shuffling, dropout, mixup), turns on deterministic TensorFlow operations and saves the training history. Re-running the training with the same seed gives the same models up to floating-point rounding.
@@ -90,7 +93,9 @@ The whole pipeline is run with [`scripts/birdnet_cv.sh`](https://github.com/maRc
 #| code-fold: false
 
 # from the project root
-bash scripts/birdnet_cv.sh all   # folds, 30 trainings (3 configurations x 2 classifiers x 5 folds) and classifications
+python scripts/birdnet_random_search.py data/processed/birdnet_cv/random_search_configs.csv --n 30 --seed 123
+CONFIGS="A B C $(cut -d, -f1 data/processed/birdnet_cv/random_search_configs.csv | tail -n +2)" \
+    bash scripts/birdnet_cv.sh all   # folds, 330 trainings (33 configurations x 2 classifiers x 5 folds) and classifications
 ```
 
 ```{r cv setup}
@@ -102,6 +107,17 @@ for (cf in configs) for (m in models) {
     cv_res[[cf]][[m]] <- list(scores = sc, thr = thr, metrics = cv_metrics(sc, spp, thr),
                               folds = fold_metrics(sc, spp, thr))
 }
+```
+
+## Random configurations
+
+```{r random configs}
+rc <- random_configs[, c("config", "hidden_units", "dropout", "batch_size", "learning_rate", "upsampling_ratio",
+                         "upsampling_mode", "mixup", "label_smoothing", "focal_loss", "focal_loss_gamma", "focal_loss_alpha")]
+rc$upsampling_mode[rc$upsampling_ratio == 0] <- ""
+names(rc) <- c("Configuration", "Hidden units", "Dropout", "Batch size", "Learning rate", "Upsampling ratio",
+               "Upsampling mode", "Mixup", "Label smoothing", "Focal loss", "Focal γ", "Focal α")
+kable(rc, row.names = FALSE)
 ```
 
 ## Folds
@@ -129,25 +145,78 @@ cmp_cv <- do.call(rbind, lapply(configs, function(cf) do.call(rbind, lapply(mode
                Accuracy = r$metrics$macro[["accuracy"]], check.names = FALSE)
 }))))
 cmp_cv$Model <- factor(cmp_cv$Model, levels = model_labels)
+# one-standard-error rule (see Cross-validation design)
+complexity <- lapply(setNames(models, models), function(m) do.call(rbind, lapply(configs, config_complexity, model = m)))
 best_cfg <- sapply(models, function(m) {
     d <- cmp_cv[cmp_cv$Model == model_labels[[m]], ]
-    d$Configuration[order(-d$AUPRC, -d$F1)[1]]
+    auprc <- setNames(d$AUPRC, d$Configuration)
+    top <- names(auprc)[which.max(auprc)]
+    select_one_se(auprc, d$`AUPRC SD`[d$Configuration == top] / sqrt(5), complexity[[m]])
 })
 cmp_cv$Selected <- ifelse(cmp_cv$Configuration == best_cfg[match(cmp_cv$Model, model_labels)], "✓", "")
+cmp_cv$`Within 1 SE of best` <- ""
+for (m in models) {
+    i <- which(cmp_cv$Model == model_labels[[m]])
+    top <- i[which.max(cmp_cv$AUPRC[i])]
+    cmp_cv$`Within 1 SE of best`[i[cmp_cv$AUPRC[i] >= cmp_cv$AUPRC[top] - cmp_cv$`AUPRC SD`[top] / sqrt(5)]] <- "yes"
+}
 
 long <- rbind(data.frame(cmp_cv[, c("Model", "Configuration")], metric = "Macro AUPRC", value = cmp_cv$AUPRC, sd = cmp_cv$`AUPRC SD`),
               data.frame(cmp_cv[, c("Model", "Configuration")], metric = "Macro F1", value = cmp_cv$F1, sd = cmp_cv$`F1 SD`))
-ggplot(long, aes(Configuration, value, color = Configuration)) +
-    geom_pointrange(aes(ymin = value - sd, ymax = value + sd), size = 0.6, linewidth = 1) +
+long$type <- ifelse(long$Configuration %in% c("A", "B", "C"), "A, B, C", "Random")
+long$rank <- ave(-long$value, long$Model, long$metric, FUN = function(x) rank(x, ties.method = "first"))
+ggplot(long, aes(rank, value, color = type)) +
+    geom_pointrange(aes(ymin = value - sd, ymax = value + sd), size = 0.3, linewidth = 0.6) +
+    geom_point(data = long[paste(long$Model, long$Configuration) %in% paste(model_labels[names(best_cfg)], best_cfg), ],
+               shape = 21, size = 4, stroke = 1.1, color = "black") +
+    geom_text(data = long[long$rank <= 3 | long$type == "A, B, C" |
+                          paste(long$Model, long$Configuration) %in% paste(model_labels[names(best_cfg)], best_cfg), ],
+              aes(label = Configuration),
+              vjust = -1.1, size = 3, show.legend = FALSE) +
     facet_grid(metric ~ Model, scales = "free_y") +
-    scale_color_viridis_d(end = 0.8, guide = "none") +
-    labs(x = "Configuration", y = "") +
-    theme(strip.background = element_blank())
+    scale_color_manual(values = c(`A, B, C` = "#E07B39", Random = "#408AB4"), name = "") +
+    labs(x = "Rank", y = "") +
+    theme(strip.background = element_blank(), legend.position = "top")
 
-kable(cmp_cv[order(cmp_cv$Model), ], digits = 3, row.names = FALSE)
+cmp_tab <- cmp_cv[order(cmp_cv$Model, -cmp_cv$AUPRC), ]
+kable(cmp_tab, digits = 3, row.names = FALSE)
 ```
 
-Selected configurations: **`r best_cfg[["sympatric_and_allopatric"]]`** for the sympatric + allopatric classifier and **`r best_cfg[["sympatric"]]`** for the sympatric-only classifier. The differences between configurations are small compared with the variation across folds.
+Selected configurations (one-standard-error rule; circled in the plot): **`r best_cfg[["sympatric_and_allopatric"]]`** for the sympatric + allopatric classifier and **`r best_cfg[["sympatric"]]`** for the sympatric-only classifier.
+
+```{r selected settings}
+sel <- do.call(rbind, lapply(models, function(m) {
+    cf <- best_cfg[[m]]
+    p <- read.csv(file.path(cv_dir, "models", cf, m, "fold_1", paste0(m, "_Params.csv")), check.names = FALSE)
+    data.frame(Classifier = model_labels[[m]], Configuration = cf, p[, c("Hidden units", "Dropout", "Batchsize", "Learning rate",
+               "Upsamling mode", "Upsamling ratio", "use mixup", "use label smoothing", "use focal loss",
+               "focal loss gamma", "focal loss alpha")], check.names = FALSE)
+}))
+names(sel) <- c("Classifier", "Configuration", "Hidden units", "Dropout", "Batch size", "Learning rate", "Upsampling mode",
+                "Upsampling ratio", "Mixup", "Label smoothing", "Focal loss", "Focal γ", "Focal α")
+# focal loss parameters only apply when focal loss is used
+sel[sel$`Focal loss` != "True", c("Focal γ", "Focal α")] <- NA
+kable(t(sel), col.names = NULL)
+```
+
+## Performance of the selection procedure
+
+Out-of-fold macro AUPRC and F1 of the selected configuration (its folds averaged) and of the selection procedure, where each fold is scored by the configuration chosen, and the thresholds tuned, on the other folds.
+
+```{r selection excluded}
+sel_ex <- do.call(rbind, lapply(models, function(m) {
+    scores <- lapply(setNames(configs, configs), function(cf) cv_res[[cf]][[m]]$scores)
+    se <- selection_excluded_metrics(scores, model_spp[[m]], complexity[[m]])
+    fm <- cv_res[[best_cfg[[m]]]][[m]]$folds
+    data.frame(Classifier = model_labels[[m]],
+               Estimate = c("Selected configuration", "Selection procedure"),
+               AUPRC = c(mean(fm$AUPRC), mean(se$AUPRC)), `AUPRC SD` = c(sd(fm$AUPRC), sd(se$AUPRC)),
+               F1 = c(mean(fm$F1), mean(se$F1)), `F1 SD` = c(sd(fm$F1), sd(se$F1)),
+               `Configurations chosen in the 5 folds` = c(best_cfg[[m]], paste(se$chosen, collapse = ", ")),
+               check.names = FALSE)
+}))
+kable(sel_ex, digits = 3, row.names = FALSE)
+```
 
 ## Training history of the selected configurations
 
@@ -250,6 +319,18 @@ for (m in models) {
               file.path(cv_dir, paste0("oof_predictions_", m, ".csv")), row.names = FALSE)
 }
 
+# predictions of every configuration (out-of-fold, and focal ensemble), for the robustness
+# check of the statistical analysis
+all_pred <- do.call(rbind, lapply(configs, function(cf) do.call(rbind, lapply(models, function(m) {
+    r <- cv_res[[cf]][[m]]
+    en <- ensemble_scores(cf, m)
+    rbind(data.frame(config = cf, model = m, clip = r$scores$clip, true = r$scores$true, predicted = r$metrics$pred),
+          data.frame(config = cf, model = m, clip = en$clip, true = "focal",
+                     predicted = assign_species(en, model_spp[[m]], r$thr)))
+}))))
+write.csv(all_pred, file.path(cv_dir, "predictions_all_configurations.csv"), row.names = FALSE)
+write.csv(data.frame(model = names(best_cfg), config = best_cfg), file.path(cv_dir, "selected_configurations.csv"), row.names = FALSE)
+
 fc_tab <- as.data.frame(table(focal_cv$model, focal_cv$predicted))
 names(fc_tab) <- c("Model", "Classified as", "Clips")
 fc_tab[fc_tab$Clips > 0, ]
@@ -280,8 +361,8 @@ data.frame(t(sh), `% sympatric` = round(100 * sh[[1]] / sum(sh), 1),
 # Takeaways
 
 - Both classifiers were trained from code with a fixed seed (123); re-running gives the same models up to floating-point rounding
-- 5-fold cross-validation grouped by recording selected configuration `r best_cfg[["sympatric_and_allopatric"]]` for the sympatric + allopatric classifier (out-of-fold macro AUPRC `r sprintf("%.3f", cmp_cv$AUPRC[cmp_cv$Selected == "✓" & cmp_cv$Model == model_labels[["sympatric_and_allopatric"]]])`) and `r best_cfg[["sympatric"]]` for the sympatric-only classifier (`r sprintf("%.3f", cmp_cv$AUPRC[cmp_cv$Selected == "✓" & cmp_cv$Model == model_labels[["sympatric"]]])`); differences between configurations are within fold-to-fold variation
-- The weakest classes are the aracaris and the oropendolas in the sympatric + allopatric classifier, where each is confused with its close relative (*P. torquatus* with *P. erythropygius* above all); in the sympatric-only classifier all species have F1 > 0.92
+- Among 33 configurations, 5-fold cross-validation grouped by recording selected configuration `r best_cfg[["sympatric_and_allopatric"]]` for the sympatric + allopatric classifier (out-of-fold macro AUPRC `r sprintf("%.3f", cmp_cv$AUPRC[cmp_cv$Selected == "✓" & cmp_cv$Model == model_labels[["sympatric_and_allopatric"]]])`) and `r best_cfg[["sympatric"]]` for the sympatric-only classifier (`r sprintf("%.3f", cmp_cv$AUPRC[cmp_cv$Selected == "✓" & cmp_cv$Model == model_labels[["sympatric"]]])`); the procedure, scored on folds not used to choose the configuration, gave macro AUPRC `r sprintf("%.3f", sel_ex$AUPRC[sel_ex$Estimate == "Selection procedure" & sel_ex$Classifier == model_labels[["sympatric_and_allopatric"]]])` and `r sprintf("%.3f", sel_ex$AUPRC[sel_ex$Estimate == "Selection procedure" & sel_ex$Classifier == model_labels[["sympatric"]]])`
+- The weakest classes are the aracaris and the oropendolas in the sympatric + allopatric classifier, where each is confused with its close relative (*P. torquatus* with *P. erythropygius* above all); in the sympatric-only classifier all species have F1 > 0.95
 - Other bellbirds were rarely classified as another species (out-of-fold predictions of all their recordings)
 - `r sh[["Sympatric"]]` focal bellbird clips were classified as a sympatric species and `r sh[["Allopatric"]]` as an allopatric one (`r round(sh[["Sympatric"]] / sh[["Allopatric"]], 1)` : 1)
 

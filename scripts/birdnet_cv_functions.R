@@ -23,7 +23,10 @@ read_tables <- function(path) {
 # clip x species matrix of confidences (0 when below the 0.05 reporting limit)
 score_matrix <- function(tab, clips, spp) {
     m <- matrix(0, length(clips), length(spp), dimnames = list(clips, spp))
+    # a model that never reaches the reporting limit (a diverged fit) scores 0 everywhere
+    if (is.null(tab)) return(m)
     tab <- tab[tab$clip %in% clips & tab$species %in% spp, ]
+    if (nrow(tab) == 0) return(m)
     tab <- aggregate(confidence ~ clip + species, tab, max)
     m[cbind(tab$clip, tab$species)] <- tab$confidence
     m
@@ -100,4 +103,48 @@ ensemble_scores <- function(config, model, k = 5) {
     })
     m <- Reduce(`+`, mats) / k
     data.frame(clip = rownames(m), m, check.names = FALSE)
+}
+
+# complexity of a configuration, to break near-ties (one-standard-error rule): hidden units
+# first, then the number of added techniques (focal loss, mixup, label smoothing, upsampling),
+# then dropout. Read from the parameters file written by BirdNET for the fold 1 model
+config_complexity <- function(config, model) {
+    p <- read.csv(file.path(cv_dir, "models", config, model, "fold_1", paste0(model, "_Params.csv")), check.names = FALSE)
+    extras <- (p[["use focal loss"]] == "True") + (p[["use mixup"]] == "True") +
+        (p[["use label smoothing"]] == "True") + (as.numeric(p[["Upsamling ratio"]]) > 0)
+    data.frame(config = config, hidden = p[["Hidden units"]], extras = extras, dropout = p[["Dropout"]])
+}
+
+# one-standard-error rule: among the configurations whose macro AUPRC is within one standard
+# error (SD across folds / sqrt(number of folds)) of the best one, the simplest
+# auprc: named vector of macro AUPRC; se: standard error of the best one's; complexity: data
+# frame from config_complexity()
+select_one_se <- function(auprc, se_best, complexity) {
+    best <- names(auprc)[which.max(auprc)]
+    cand <- names(auprc)[auprc >= auprc[[best]] - se_best]
+    cx <- complexity[match(cand, complexity$config), ]
+    cand[order(cx$hidden, cx$extras, cx$dropout, -auprc[cand])][1]
+}
+
+# macro AUPRC of each fold
+fold_auprc <- function(sc, spp) sapply(split(sc, sc$fold), function(d)
+    mean(sapply(spp, function(sp) avg_precision(d[[sp]], d$true == sp))))
+
+# performance of the selection procedure itself (the selected configuration's out-of-fold score
+# is optimistic when it is chosen among many). For each fold k, the configuration is chosen with
+# the one-standard-error rule on the out-of-fold predictions of the other folds, and its
+# thresholds are tuned on those folds; it is then scored on fold k, which played no part in the
+# choice. scores: list of out-of-fold score data frames, one per configuration
+selection_excluded_metrics <- function(scores, spp, complexity) {
+    ks <- sort(unique(scores[[1]]$fold))
+    do.call(rbind, lapply(ks, function(k) {
+        rest <- lapply(scores, function(sc) sc[sc$fold != k, ])
+        auprc_rest <- sapply(rest, function(d) mean(sapply(spp, function(sp) avg_precision(d[[sp]], d$true == sp))))
+        best <- names(auprc_rest)[which.max(auprc_rest)]
+        fa <- fold_auprc(rest[[best]], spp)
+        cf <- select_one_se(auprc_rest, sd(fa) / sqrt(length(fa)), complexity)
+        held <- scores[[cf]][scores[[cf]]$fold == k, ]
+        m <- cv_metrics(held, spp, optimal_thresholds(rest[[cf]], spp))$macro
+        data.frame(fold = k, chosen = cf, AUPRC = m[["AUPRC"]], F1 = m[["F1"]], accuracy = m[["accuracy"]])
+    }))
 }

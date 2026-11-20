@@ -773,7 +773,7 @@ bias_plot(show_other = TRUE)
 </div>
 
 ::: {.notes}
-**By 7:30.** Now the other bellbirds: no such bias. When the focal bellbird is classified as another species, 95% of the time it is the sympatric one (95% CI: 93–97%), about 16 times more than its allopatric relative (811 vs 50 vocalizations); by chance we would expect half and half. The other bellbirds, each classified by a model that never heard its recording, are almost never classified as another species: 9 of 800 vocalizations. This supports genuine mimicry.
+**By 7:30.** Now the other bellbirds: no such bias. When the focal bellbird is classified as another species, 93% of the time it is the sympatric one (95% CI: 90–95%), about 10 times more than its allopatric relative (807 vs 80 vocalizations); by chance we would expect half and half. The other bellbirds, each classified by a model that never heard its recording, are almost never classified as another species: 9 of 800 vocalizations. This supports genuine mimicry.
 :::
 
 ## Similarity to sympatric species {.desempeno .titulo-pequeno}
