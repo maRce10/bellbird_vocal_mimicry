@@ -81,11 +81,11 @@ write.csv(grid, file.path(out_data, "temporal_curves.csv"), row.names = FALSE)
 
 # ---- quality of the imitations and of the own song through time --------------------------
 # acoustic similarity (mean cosine similarity of the generic BirdNET embedding to the 5 most similar
-# reference clips of the species) and consistency (cosine similarity to the leave-one-out centroid
-# of the clips of the same type recorded the same day) of each assigned focal clip, and their
-# population-level trends at average SNR (and group size). Final models of statistical_analysis_cv.qmd
+# reference clips of the species) and consistency (mean cosine similarity to each of the other clips
+# of the same type recorded the same day) of each assigned focal clip, and their
+# population-level trends at average SNR. Final models of statistical_analysis_cv.qmd
 qfits <- list(similarity = readRDS("data/processed/cv_fits/imitation_knn_snr2_through_time.rds"),
-              consistency = readRDS("data/processed/cv_fits/consistency_by_type_through_time.rds"))
+              consistency = readRDS("data/processed/cv_fits/consistency_pairwise_by_type_through_time.rds"))
 resp <- c(similarity = "knn", consistency = "consistency")
 spp_levels <- levels(qfits$similarity$data$species)
 qpoints <- qcurves <- qslopes <- list()

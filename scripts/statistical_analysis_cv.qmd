@@ -120,7 +120,7 @@ names(per_sp) <- c("Classifier", "Species", "Precision", "Recall", "F1", "AUPRC"
 kable(per_sp, digits = 3, row.names = FALSE)
 ```
 
-In the sympatric + allopatric classifier the aracaris and the oropendolas are the weakest classes, each confused mostly with its close relative. Out-of-fold confusion matrices (proportion of the clips of each species; numbers are clips):
+In the sympatric + allopatric classifier the aracaris and the oropendolas are the weakest classes, each confused mostly with its close relative. Out-of-fold confusion matrices (colour: proportion of the clips of each species; numbers: clips):
 
 ```{r oof confusion}
 #| fig-width: 12
@@ -136,15 +136,27 @@ cm <- do.call(rbind, lapply(models, function(m) {
 }))
 cm$Classifier <- factor(cm$Classifier, levels = unique(cm$Classifier))
 
-ggplot(cm, aes(Predicted, True, fill = Proportion)) +
-    geom_tile(color = "white") +
-    geom_text(aes(label = ifelse(Freq > 0, Freq, ""), color = Proportion > 0.5), size = 3.5) +
-    scale_color_manual(values = c(`TRUE` = "white", `FALSE` = "black"), guide = "none") +
-    scale_fill_viridis_c(option = "mako", direction = -1, limits = c(0, 1)) +
-    facet_wrap(~ Classifier, scales = "free") +
-    labs(x = "Predicted", y = "Vocalizing species") +
-    theme(axis.text.x = element_text(angle = 45, hjust = 1, face = "italic"),
-          axis.text.y = element_text(face = "italic"), strip.background = element_blank())
+cm_plot <- function(d, label) {
+    ggplot(d, aes(Predicted, True, fill = Proportion)) +
+        geom_tile(color = "white") +
+        geom_text(aes(label = label, color = Proportion > 0.5), size = 3.5) +
+        scale_color_manual(values = c(`TRUE` = "white", `FALSE` = "black"), guide = "none") +
+        scale_fill_viridis_c(option = "mako", direction = -1, limits = c(0, 1)) +
+        facet_wrap(~ Classifier, scales = "free") +
+        labs(x = "Predicted", y = "Vocalizing species") +
+        theme(axis.text.x = element_text(angle = 45, hjust = 1, face = "italic"),
+              axis.text.y = element_text(face = "italic"), strip.background = element_blank())
+}
+cm_plot(cm, ifelse(cm$Freq > 0, cm$Freq, ""))
+```
+
+Normalized confusion matrices (proportion of the clips of each species; rows sum to 1 and the diagonal is the recall of each species):
+
+```{r oof confusion normalized}
+#| fig-width: 12
+#| fig-height: 5.5
+
+cm_plot(cm, ifelse(cm$Freq > 0, sprintf("%.2f", cm$Proportion), ""))
 ```
 
 # Sympatric and allopatric species
@@ -572,6 +584,10 @@ ggplot(ql, aes(date, value, color = species, fill = species)) +
 Lines and bands: posterior mean and 95% interval of the population-level fit.
 
 ## Consistency of the own song
+
+::: {.callout-note}
+Superseded. This first version (and its refits with SNR below, `mod7` and the consistency model of `mod9`) measures the distance to a day centroid that includes the clip itself, which makes days with few clips look more consistent. The final consistency measure, for all vocalization types and within dialect, is the similarity to the centroid of the other clips of the same day (leave-one-out) with the number of clips as a covariate; see [Consistency of the imitations and of the own song](#consistency-of-the-imitations-and-of-the-own-song) and [Own song within dialect](#own-song-within-dialect).
+:::
 
 ```{r consistency}
 b <- q[q$species == "Three-wattled Bellbird", ]
@@ -1022,7 +1038,7 @@ cons9 <- as_draws_df(mod9$cons)$b_scalejulian_day
 
 ### Consistency of the imitations and of the own song
 
-During vocal learning, copies typically become both more similar to the target and more consistent. Consistency was measured for each vocalization type as the cosine similarity of each clip's embedding to the centroid of the other clips of the same type recorded on the same day (leave-one-out, so a clip does not pull the centroid towards itself; day × type combinations with at least 5 clips). Higher values mean more consistent. Centroids of fewer clips are noisier, so the number of clips of the combination (log) was added as a covariate, together with both SNR measures.
+During vocal learning, copies typically become both more similar to the target and more consistent. Consistency is the variability within a time window (the recording day): for each clip, the mean cosine similarity of its embedding to each of the other clips of the same type recorded on the same day (day × type combinations with at least 5 clips). Higher values mean more consistent. Unlike the similarity to a centroid of the day's clips (with or without the clip itself), the expected value of this mean pairwise similarity does not depend on the number of clips of the day (only its precision does), which matters because the number of own-song clips per day increased through the season. Two checks: the main model refitted with the (log) number of clips of the day × type combination as a covariate, and a rarefied version in which each day × type combination is repeatedly subsampled to 5 clips (`r 100` draws) and its mean pairwise similarity averaged across draws, modelled at the level of the combination.
 
 ```{r consistency by type}
 qc <- q_l
@@ -1030,10 +1046,23 @@ qc$day_type <- paste(qc$day, qc$species)
 grp_n <- table(qc$day_type)
 qc <- qc[qc$day_type %in% names(grp_n)[grp_n >= 5], ]
 qc$n_group <- as.numeric(grp_n[qc$day_type])
-grp_sum <- rowsum(emb_focal[qc$clip, ], qc$day_type)
-loo <- grp_sum[qc$day_type, ] - emb_focal[qc$clip, ]  # sum of the other clips of the group
-loo <- loo / sqrt(rowSums(loo^2))
-qc$consistency <- rowSums(emb_focal[qc$clip, ] * loo)
+# mean pairwise similarity to the other clips of the group (embeddings are unit length):
+# (x . sum of the group - x . x) / (n - 1)
+pairwise_mean <- function(emb, group) {
+    grp_sum <- rowsum(emb, group)[group, , drop = FALSE]
+    (rowSums(emb * grp_sum) - 1) / (as.numeric(table(group)[group]) - 1)
+}
+qc$consistency <- pairwise_mean(emb_focal[qc$clip, ], qc$day_type)
+
+# rarefied: each group subsampled to 5 clips, mean pairwise similarity averaged over 100 draws
+rarefy_pairwise <- function(emb, clips, k = 5, n_draw = 100) {
+    mean(replicate(n_draw, { e <- emb[sample(clips, k), ]; sm <- tcrossprod(e); mean(sm[upper.tri(sm)]) }))
+}
+set.seed(123)
+qc_g <- do.call(rbind, lapply(split(qc, qc$day_type), function(d)
+    data.frame(day = d$day[1], species = d$species[1], julian_day = d$julian_day[1], n_group = nrow(d),
+               consistency = rarefy_pairwise(emb_focal, d$clip), snr = mean(d$snr), snr_long = mean(d$snr_long))))
+qc_g$species <- factor(qc_g$species, levels = levels(qc$species))
 
 kable(data.frame(Species = levels(qc$species),
                  Clips = as.numeric(table(qc$species)),
@@ -1041,22 +1070,32 @@ kable(data.frame(Species = levels(qc$species),
                  `Mean consistency` = tapply(qc$consistency, qc$species, mean), check.names = FALSE),
       digits = 3, row.names = FALSE)
 
-mod12 <- fit_q(scale(consistency) ~ species * scale(julian_day) + scale(log(n_group)) + scale(snr) + scale(snr_long) + (1 | day/recording),
-               qc, "consistency_by_type_through_time")
+mod12 <- fit_q(scale(consistency) ~ species * scale(julian_day) + scale(snr) + scale(snr_long) + (1 | day/recording),
+               qc, "consistency_pairwise_by_type_through_time")
+mod12_n <- fit_q(scale(consistency) ~ species * scale(julian_day) + scale(log(n_group)) + scale(snr) + scale(snr_long) + (1 | day/recording),
+                 qc, "consistency_pairwise_by_type_n_through_time")
+mod12_r <- fit_q(scale(consistency) ~ species * scale(julian_day) + scale(snr) + scale(snr_long) + (1 | day),
+                 qc_g, "consistency_rarefied_by_type_through_time")
 ```
 
 ```{r mod12 summary}
 #| results: "asis"
 #| fig-height: 5
 
-extended_summary(mod12, n.posterior = 1000, fill = mako(10)[8], trace.palette = mako,
-                 remove.intercepts = FALSE, highlight = TRUE, print.name = FALSE)
+for (m in list(mod12, mod12_n, mod12_r))
+    extended_summary(m, n.posterior = 1000, fill = mako(10)[8], trace.palette = mako,
+                     remove.intercepts = FALSE, highlight = TRUE, print.name = FALSE)
 ```
 
 ```{r consistency by type slopes}
 sl12 <- species_slopes(mod12, "Consistency")
 sd12 <- slope_diff(mod12, "Consistency", "Both SNR measures")
 kable(sl12, digits = 3, row.names = FALSE, caption = "Slopes of consistency through time (SD per SD of date)")
+sl12_chk <- rbind(cbind(Version = "Mean pairwise similarity (main)", sl12),
+                  cbind(Version = "+ log number of clips of the day", species_slopes(mod12_n, "Consistency")),
+                  cbind(Version = "Rarefied to 5 clips per day (one value per day × type)", species_slopes(mod12_r, "Consistency")))
+kable(sl12_chk[, c("Version", "Species", "Slope", "2.5%", "97.5%")], digits = 3, row.names = FALSE,
+      caption = "Consistency slopes in the main model and the two sample-size checks")
 kable(sd12, digits = 3, row.names = FALSE, caption = "Difference from the slope of the toucan-like vocalizations")
 ```
 
@@ -1098,7 +1137,7 @@ cat("- Final models (neighbour similarity, both SNR measures), slope per SD of d
     ", aracari minus toucan ", fd("Neighbour similarity", "Both SNR measures", "Aracari minus toucan"), "\n", sep = "")
 cat("- Long-window SNR changed through time differently by vocalization type (see table); noise in the bellbird band relative to the toucan band: ",
     fds(mod8$noise_bt), "; aracari band relative to the toucan band: ", fds(mod8$noise_at), "\n", sep = "")
-cat("- Consistency through time (similarity to the leave-one-out day centroid of the same vocalization type, slope SD per SD of date): Keel-billed Toucan ",
+cat("- Consistency through time (mean pairwise similarity to the other clips of the same vocalization type and day, slope SD per SD of date): Keel-billed Toucan ",
     with(sl12[1, ], sprintf("%.2f [95%% UI: %.2f–%.2f]", Slope, `2.5%`, `97.5%`)), ", Collared Aracari ",
     with(sl12[2, ], sprintf("%.2f [95%% UI: %.2f–%.2f]", Slope, `2.5%`, `97.5%`)), ", Three-wattled Bellbird ",
     with(sl12[3, ], sprintf("%.2f [95%% UI: %.2f–%.2f]", Slope, `2.5%`, `97.5%`)), "\n", sep = "")
@@ -1166,9 +1205,13 @@ rec_d <- do.call(rbind, lapply(split(dsc, dsc$recording), function(d)
 Out-of-fold confusion matrix (assigned clips, rows: annotated dialect) and recording-level accuracy (dialect with the highest mean confidence over the clips of each recording):
 
 ```{r dialect confusion}
-kable(as.data.frame.matrix(table(Annotated = dsc$true, Predicted = factor(dsc$pred, levels = c(dialects, "Unassigned")))))
-kable(as.data.frame.matrix(table(Annotated = rec_d$true, Predicted = factor(rec_d$pred, levels = dialects))),
-      caption = paste0("Recordings: ", sum(rec_d$true == rec_d$pred), " of ", nrow(rec_d), " correctly assigned"))
+d_tab <- table(Annotated = dsc$true, Predicted = factor(dsc$pred, levels = c(dialects, "Unassigned")))
+r_tab <- table(Annotated = rec_d$true, Predicted = factor(rec_d$pred, levels = dialects))
+kable(as.data.frame.matrix(d_tab), caption = "Clips (number)")
+kable(as.data.frame.matrix(prop.table(d_tab, 1)), digits = 2, caption = "Clips, normalized (proportion of the clips of each annotated dialect)")
+kable(as.data.frame.matrix(r_tab),
+      caption = paste0("Recordings (number): ", sum(rec_d$true == rec_d$pred), " of ", nrow(rec_d), " correctly assigned"))
+kable(as.data.frame.matrix(prop.table(r_tab, 1)), digits = 2, caption = "Recordings, normalized (proportion of the recordings of each annotated dialect)")
 ```
 
 ## Dialects of the focal bellbird
@@ -1227,7 +1270,7 @@ extended_summary(mod10, n.posterior = 1000, fill = mako(10)[8], trace.palette = 
 
 For the focal clips assigned to Nicaragua or Talamanca:
 
-- **Consistency within dialect**: cosine distance of each clip to the centroid of the clips of the same dialect recorded on the same day (day × dialect combinations with at least 5 clips). Benchmark: distance of reference clips of the same dialect to the centroid of their own recording (recordings with at least 5 clips)
+- **Consistency within dialect**: mean cosine similarity of each clip to each of the other clips of the same dialect recorded on the same day (as for the consistency of each vocalization type; day × dialect combinations with at least 5 clips). Higher values mean more consistent. Check: rarefied to 5 clips per day × dialect. Benchmark: the same measure for reference clips of the same dialect, relative to the other clips of their own recording (recordings with at least 5 clips)
 - **Similarity within dialect**: neighbour similarity (mean cosine similarity to the 5 most similar clips) to the reference clips of the assigned dialect, subsampled 20 times to the size of the smallest of the two (`r min(table(dfolds$species)[c("Nicaragua", "Talamanca")])` clips), and its typicality percentile among the reference clips of that dialect (scored against clips of the same dialect from other recordings)
 
 ```{r within dialect measures}
@@ -1240,12 +1283,11 @@ dref$snr <- snr$snr[match(dref$clip, snr$clip)]
 fnt$day_dialect <- paste(fnt$day, fnt$dialect)
 keep <- names(which(table(fnt$day_dialect) >= 5))
 bd <- fnt[fnt$day_dialect %in% keep, ]
-cent_dd <- t(sapply(split(bd$clip, bd$day_dialect), function(cl) { v <- colMeans(emb_focal[cl, , drop = FALSE]); v / sqrt(sum(v^2)) }))
-bd$distance <- 1 - rowSums(emb_focal[bd$clip, ] * cent_dd[bd$day_dialect, ])
+bd$n_group <- as.numeric(table(bd$day_dialect)[bd$day_dialect])
+bd$consistency <- pairwise_mean(emb_focal[bd$clip, ], bd$day_dialect)
 ref_dd <- do.call(rbind, lapply(split(dref, paste(dref$recording, dref$species)), function(d) {
     if (nrow(d) < 5) return(NULL)
-    v <- colMeans(emb_ref[d$clip, , drop = FALSE]); v <- v / sqrt(sum(v^2))
-    data.frame(dialect = d$species[1], distance = as.numeric(1 - emb_ref[d$clip, , drop = FALSE] %*% v))
+    data.frame(dialect = d$species[1], consistency = pairwise_mean(emb_ref[d$clip, , drop = FALSE], rep("r", nrow(d))))
 }))
 
 # neighbour similarity to the reference clips of the assigned dialect
@@ -1269,8 +1311,8 @@ for (dl in c("Nicaragua", "Talamanca")) {
 kable(data.frame(Dialect = c("Nicaragua", "Talamanca"),
                  `Focal clips` = as.numeric(table(fnt$dialect)[c("Nicaragua", "Talamanca")]),
                  `Day × dialect groups (≥ 5 clips)` = sapply(c("Nicaragua", "Talamanca"), function(dl) length(unique(bd$day_dialect[bd$dialect == dl]))),
-                 `Focal: distance to day × dialect centroid` = tapply(bd$distance, bd$dialect, mean)[c("Nicaragua", "Talamanca")],
-                 `Other bellbirds: distance to recording centroid` = tapply(ref_dd$distance, ref_dd$dialect, mean)[c("Nicaragua", "Talamanca")],
+                 `Focal: consistency within day × dialect` = tapply(bd$consistency, bd$dialect, mean)[c("Nicaragua", "Talamanca")],
+                 `Other bellbirds: consistency within recording` = tapply(ref_dd$consistency, ref_dd$dialect, mean)[c("Nicaragua", "Talamanca")],
                  `Focal: neighbour similarity to the dialect` = tapply(fnt$knn_d, fnt$dialect, mean)[c("Nicaragua", "Talamanca")],
                  `Focal: median typicality percentile` = tapply(fnt$pct_d, fnt$dialect, median)[c("Nicaragua", "Talamanca")],
                  check.names = FALSE), digits = 3, row.names = FALSE)
@@ -1283,9 +1325,9 @@ bd$snr_long <- q$snr_long[match(bd$clip, q$clip)]
 fnt_l <- fnt[!is.na(fnt$snr_long), ]
 bd_l <- bd[!is.na(bd$snr_long), ]
 mod11 <- list(
-    cons = brm(scale(distance) ~ dialect * scale(julian_day) + scale(snr) + scale(snr_long) + (1 | day/recording), data = bd_l,
+    cons = brm(scale(consistency) ~ dialect * scale(julian_day) + scale(snr) + scale(snr_long) + (1 | day/recording), data = bd_l,
                prior = priors5, chains = chains, iter = iter, cores = cores, control = list(adapt_delta = 0.99), seed = 123,
-               file = file.path(fit_dir, "own_song_consistency_within_dialect_through_time"), file_refit = "on_change"),
+               file = file.path(fit_dir, "own_song_consistency_pairwise_within_dialect_through_time"), file_refit = "on_change"),
     sim = brm(scale(knn_d) ~ dialect * scale(julian_day) + scale(snr) + scale(snr_long) + (1 | day/recording), data = fnt_l,
               prior = priors5, chains = chains, iter = iter, cores = cores, control = list(adapt_delta = 0.99), seed = 123,
               file = file.path(fit_dir, "own_song_similarity_within_dialect_through_time"), file_refit = "on_change"),
@@ -1296,13 +1338,22 @@ mod11 <- list(
     sim_sp = brm(scale(knn) ~ dialect + scale(julian_day) + scale(snr) + scale(snr_long) + (1 | day/recording), data = fnt_l,
                  prior = priors5, chains = chains, iter = iter, cores = cores, control = list(adapt_delta = 0.99), seed = 123,
                  file = file.path(fit_dir, "own_song_similarity_adjusted_for_dialect_through_time"), file_refit = "on_change"))
+
+# rarefied consistency: each day x dialect subsampled to 5 clips (one value per combination)
+set.seed(123)
+bd_g <- do.call(rbind, lapply(split(bd_l, bd_l$day_dialect), function(d)
+    data.frame(day = d$day[1], dialect = d$dialect[1], julian_day = d$julian_day[1], n_group = nrow(d),
+               consistency = rarefy_pairwise(emb_focal, d$clip), snr = mean(d$snr), snr_long = mean(d$snr_long))))
+mod11_r <- brm(scale(consistency) ~ dialect * scale(julian_day) + scale(snr) + scale(snr_long) + (1 | day), data = bd_g,
+               prior = priors5, chains = chains, iter = iter, cores = cores, control = list(adapt_delta = 0.99), seed = 123,
+               file = file.path(fit_dir, "own_song_consistency_rarefied_within_dialect_through_time"), file_refit = "on_change")
 ```
 
 ```{r mod11 summary}
 #| results: "asis"
 #| fig-height: 4
 
-for (m in mod11)
+for (m in c(mod11, list(mod11_r)))
     extended_summary(m, n.posterior = 1000, fill = mako(10)[8], trace.palette = mako,
                      remove.intercepts = FALSE, highlight = TRUE, print.name = FALSE)
 ```
@@ -1317,7 +1368,8 @@ dialect_slopes <- function(fit, measure) {
 x_sp <- as_draws_df(mod11$sim_sp)$b_scalejulian_day
 x_sp0 <- as_draws_df(mod11$sim_sp0)$b_scalejulian_day
 x_d <- as_draws_df(mod10)$b_scalejulian_day
-sl11 <- rbind(dialect_slopes(mod11$cons, "Distance to day × dialect centroid"),
+sl11 <- rbind(dialect_slopes(mod11$cons, "Consistency within day × dialect"),
+              dialect_slopes(mod11_r, "Consistency within day × dialect, rarefied to 5 clips"),
               dialect_slopes(mod11$sim, "Neighbour similarity to the dialect"),
               data.frame(Measure = "Neighbour similarity to Three-wattled Bellbird, not adjusted for dialect", Dialect = "Both", Slope = mean(x_sp0),
                          `2.5%` = quantile(x_sp0, 0.025), `97.5%` = quantile(x_sp0, 0.975), check.names = FALSE, row.names = NULL),
@@ -1335,7 +1387,7 @@ write.csv(fd_out, "./data/processed/focal_dialects.csv", row.names = FALSE)
 #| fig-width: 10
 #| fig-height: 4
 
-wl <- rbind(data.frame(bd[, c("date", "day", "dialect")], panel = "Distance to day × dialect centroid", value = bd$distance),
+wl <- rbind(data.frame(bd[, c("date", "day", "dialect")], panel = "Consistency within day × dialect", value = bd$consistency),
             data.frame(fnt[, c("date", "day", "dialect")], panel = "Neighbour similarity to the dialect", value = fnt$knn_d))
 ggplot(wl, aes(date, value, color = dialect)) +
     geom_jitter(width = 1.5, height = 0, alpha = 0.3, size = 0.9) +
@@ -1367,12 +1419,153 @@ cat("- The focal bellbird's own-species clips were assigned mostly to the Nicara
     paste(sprintf("%s %.0f%%", names(table(fd$dialect)), 100 * prop.table(table(fd$dialect))), collapse = ", "),
     "); the proportion of Talamanca rather than Nicaragua clips increased through time (slope ", sprintf("%.2f [95%% UI: %.2f–%.2f]", mean(x_d), quantile(x_d, 0.025), quantile(x_d, 0.975)),
     " log-odds per SD of date)\n", sep = "")
-cat("- Distance to the day × dialect centroid through time: Nicaragua ", ci11("Distance to day × dialect centroid", "Nicaragua"),
-    ", Talamanca ", ci11("Distance to day × dialect centroid", "Talamanca"), "; negative values mean more consistent\n", sep = "")
+cat("- Consistency within day × dialect (mean pairwise similarity) through time: Nicaragua ", ci11("Consistency within day × dialect", "Nicaragua"),
+    ", Talamanca ", ci11("Consistency within day × dialect", "Talamanca"), "; positive values mean more consistent\n", sep = "")
 cat("- Neighbour similarity to the reference clips of the assigned dialect through time: Nicaragua ", ci11("Neighbour similarity to the dialect", "Nicaragua"),
     ", Talamanca ", ci11("Neighbour similarity to the dialect", "Talamanca"), "\n", sep = "")
 cat("- Neighbour similarity to Three-wattled Bellbird in the same Nicaragua and Talamanca clips: not adjusted for dialect ", ci11("Neighbour similarity to Three-wattled Bellbird, not adjusted for dialect", "Both"),
     ", adjusted for dialect ", ci11("Neighbour similarity to Three-wattled Bellbird, adjusted for dialect", "Both"), "\n", sep = "")
+```
+
+:::
+
+# Precision of the trends and nonlinear change
+
+Several trends in the vocal-quality and dialect analyses have intervals that include zero. With only 7–10 recording days per vocalization type in some analyses, such intervals may reflect a lack of precision rather than an absence of change. This section quantifies how large a change the data can rule out, and whether a straight line through time hides a change that is not linear (e.g. an early improvement that then levels off).
+
+## How large a change the data can rule out
+
+All measures and dates are standardized, so slopes are in SD of the measure per SD of date. A region of practical equivalence (ROPE) of ± `r 0.1` SD per SD of date was used, the conventional "negligible" standardized effect (Kruschke 2018). Given the length of the sampling season, this ROPE is equivalent to a change of about ± `r 0.1` × (season range in SD of date) over the whole season (see the table). Each slope is classified as:
+
+- **Change**: the 95% interval excludes zero
+- **Practically no change**: the 95% interval lies entirely within the ROPE
+- **Inconclusive**: neither (the data cannot tell a negligible change from a relevant one)
+
+The approximate minimum detectable slope is the slope that would be detected (95% interval excluding zero) with 80% probability given the posterior uncertainty: (1.96 + 0.84) × posterior SD of the slope.
+
+```{r precision of slopes}
+rope <- 0.1
+type_draws <- function(fit) {
+    post <- as_draws_df(fit)
+    base <- post$b_scalejulian_day
+    cbind(`Keel-billed Toucan` = base, `Collared Aracari` = base + post[["b_speciesCollaredAracari:scalejulian_day"]],
+          `Three-wattled Bellbird` = base + post[["b_speciesThreeMwattledBellbird:scalejulian_day"]])
+}
+dialect_draws <- function(fit) {
+    post <- as_draws_df(fit)
+    cbind(Nicaragua = post$b_scalejulian_day, Talamanca = post$b_scalejulian_day + post[["b_dialectTalamanca:scalejulian_day"]])
+}
+precision_rows <- function(draws, measure, data) {
+    season <- diff(range(data$julian_day)) / sd(data$julian_day)
+    do.call(rbind, lapply(colnames(draws), function(g) {
+        x <- draws[, g]; lo <- quantile(x, 0.025); hi <- quantile(x, 0.975)
+        data.frame(Measure = measure, Group = g, Slope = mean(x), `2.5%` = lo, `97.5%` = hi,
+                   `Change over the season (SD)` = mean(x) * season,
+                   `Season change, 95% interval` = sprintf("%.2f to %.2f", lo * season, hi * season),
+                   `P(inside ROPE)` = mean(abs(x) < rope),
+                   `Minimum detectable slope` = 2.8 * sd(x),
+                   Conclusion = if (lo > 0 | hi < 0) "Change" else if (lo > -rope & hi < rope) "Practically no change" else "Inconclusive",
+                   check.names = FALSE, row.names = NULL)
+    }))
+}
+prec <- rbind(precision_rows(type_draws(mod9$knn), "Similarity to the assigned species", q_l),
+              precision_rows(type_draws(mod12), "Consistency (mean pairwise similarity within day × type)", qc),
+              precision_rows(dialect_draws(mod11$sim), "Similarity to the assigned dialect", fnt_l),
+              precision_rows(dialect_draws(mod11$cons), "Consistency within day × dialect", bd_l))
+kable(prec, digits = 2, row.names = FALSE,
+      caption = "Slopes through time (SD per SD of date), the change they imply over the whole season, the posterior probability that the slope is negligible (|slope| < 0.1) and the approximate minimum detectable slope")
+```
+
+## Nonlinear change through time
+
+The same models were refitted with a separate smooth function of date (thin-plate spline, `k = 4`) for each vocalization type or dialect instead of a straight line, keeping the covariates and random effects. The models are compared with approximate leave-one-out cross-validation (positive differences favour the spline); the dashed lines in the plot are the linear fits.
+
+```{r spline models}
+fit_s <- function(formula, data, name) brm(formula, data = data, prior = priors4, chains = chains, iter = iter, cores = cores,
+                                           control = list(adapt_delta = 0.99), seed = 123,
+                                           file = file.path(fit_dir, name), file_refit = "on_change")
+spline_versions <- list(
+    sim = list(lin = mod9$knn, data = q_l, group = "species", measure = "Similarity to the assigned species", y = "knn",
+               fit = fit_s(scale(knn) ~ species + s(julian_day, by = species, k = 4) + scale(snr) + scale(snr_long) + (1 | day/recording),
+                           q_l, "imitation_knn_snr2_spline_through_time")),
+    cons = list(lin = mod12, data = qc, group = "species", measure = "Consistency", y = "consistency",
+                fit = fit_s(scale(consistency) ~ species + s(julian_day, by = species, k = 4) + scale(snr) + scale(snr_long) + (1 | day/recording),
+                            qc, "consistency_pairwise_by_type_spline_through_time")),
+    d_sim = list(lin = mod11$sim, data = fnt_l, group = "dialect", measure = "Similarity to the assigned dialect", y = "knn_d",
+                 fit = fit_s(scale(knn_d) ~ dialect + s(julian_day, by = dialect, k = 4) + scale(snr) + scale(snr_long) + (1 | day/recording),
+                             fnt_l, "own_song_similarity_within_dialect_spline_through_time")),
+    d_cons = list(lin = mod11$cons, data = bd_l, group = "dialect", measure = "Consistency within day × dialect", y = "consistency",
+                  fit = fit_s(scale(consistency) ~ dialect + s(julian_day, by = dialect, k = 4) + scale(snr) + scale(snr_long) + (1 | day/recording),
+                              bd_l, "own_song_consistency_pairwise_within_dialect_spline_through_time")))
+for (v in names(spline_versions)) {
+    spline_versions[[v]]$lin <- add_criterion(spline_versions[[v]]$lin, "loo")
+    spline_versions[[v]]$fit <- add_criterion(spline_versions[[v]]$fit, "loo")
+}
+```
+
+```{r spline diagnostics}
+spline_diag <- do.call(rbind, lapply(spline_versions, function(v) {
+    lc <- loo_compare(v$fit, v$lin)
+    sgn <- if (rownames(lc)[1] == "v$fit") 1 else -1
+    data.frame(Measure = v$measure, `Max Rhat` = max(rhat(v$fit), na.rm = TRUE),
+               `Divergent transitions` = sum(nuts_params(v$fit)$Value[nuts_params(v$fit)$Parameter == "divergent__"]),
+               `ELPD difference (spline − linear)` = sgn * -lc[2, "elpd_diff"], SE = lc[2, "se_diff"], check.names = FALSE, row.names = NULL)
+}))
+kable(spline_diag, digits = 2, row.names = FALSE, caption = "Convergence of the spline models and leave-one-out comparison with the linear models")
+```
+
+```{r spline plot}
+#| fig-width: 10
+#| fig-height: 7
+
+curve_data <- function(v, fit, shape) {
+    d <- v$data
+    grid <- expand.grid(julian_day = seq(min(d$julian_day), max(d$julian_day), length.out = 60),
+                        g = levels(factor(d[[v$group]])), stringsAsFactors = FALSE)
+    names(grid)[2] <- v$group
+    grid$snr <- mean(d$snr); grid$snr_long <- mean(d$snr_long)
+    if ("n_group" %in% names(d)) grid$n_group <- exp(mean(log(d$n_group)))
+    ep <- posterior_epred(fit, newdata = grid, re_formula = NA)
+    data.frame(Measure = v$measure, Group = grid[[v$group]], date = as.Date(grid$julian_day - 1, origin = "2020-01-01"),
+               value = colMeans(ep), low = apply(ep, 2, quantile, 0.025), high = apply(ep, 2, quantile, 0.975), Shape = shape)
+}
+sc <- do.call(rbind, lapply(spline_versions, function(v) rbind(curve_data(v, v$fit, "Spline"), curve_data(v, v$lin, "Linear"))))
+sp_pts <- do.call(rbind, lapply(spline_versions, function(v) {
+    y <- as.numeric(scale(v$data[[v$y]]))
+    a <- aggregate(y ~ julian_day + g, data.frame(y = y, julian_day = v$data$julian_day, g = v$data[[v$group]]), mean)
+    data.frame(Measure = v$measure, Group = a$g, date = as.Date(a$julian_day - 1, origin = "2020-01-01"), value = a$y)
+}))
+grp_cols <- c(`Keel-billed Toucan` = mako(10)[3], `Collared Aracari` = mako(10)[5], `Three-wattled Bellbird` = mako(10)[7],
+              Nicaragua = magma(10)[4], Talamanca = magma(10)[7])
+ggplot(sc[sc$Shape == "Spline", ], aes(date, value, colour = Group, fill = Group)) +
+    geom_point(data = sp_pts, size = 1.6, alpha = 0.6) +
+    geom_ribbon(aes(ymin = low, ymax = high), alpha = 0.15, colour = NA) +
+    geom_line(linewidth = 1) +
+    geom_line(data = sc[sc$Shape == "Linear", ], linetype = "dashed", linewidth = 0.6) +
+    facet_wrap(~ Measure, scales = "free_y") +
+    scale_colour_manual(values = grp_cols, name = NULL) + scale_fill_manual(values = grp_cols, name = NULL) +
+    scale_x_date(date_breaks = "2 months", date_labels = "%b") +
+    labs(x = "Date", y = "Standardized value (at average SNR)") +
+    theme(strip.background = element_blank(), legend.position = "top")
+```
+
+Points: daily means of the standardized measure. Solid lines and bands: spline fits with 95% intervals; dashed lines: linear fits.
+
+::: {.alert .alert-info}
+
+#### Summary
+
+```{r precision summary}
+#| results: "asis"
+#| echo: false
+
+for (m in unique(prec$Measure)) {
+    r <- prec[prec$Measure == m, ]
+    cat("- ", m, ": ", paste(sprintf("%s %s (slope %.2f [%.2f–%.2f], P(negligible) = %.2f, minimum detectable slope %.2f)", r$Group, tolower(r$Conclusion),
+                                       r$Slope, r[["2.5%"]], r[["97.5%"]], r[["P(inside ROPE)"]], r[["Minimum detectable slope"]]), collapse = "; "), "\n", sep = "")
+}
+cat("- Spline vs linear models (ELPD difference ± SE, positive favours the spline): ",
+    paste(sprintf("%s %.1f ± %.1f", spline_diag$Measure, spline_diag[["ELPD difference (spline − linear)"]], spline_diag$SE), collapse = "; "), "\n", sep = "")
 ```
 
 :::
