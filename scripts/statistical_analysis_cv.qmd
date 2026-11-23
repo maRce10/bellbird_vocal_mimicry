@@ -348,7 +348,11 @@ p_others2 <- as.numeric(posterior_epred(mod2, newdata = data.frame(vocalizing_ty
 Daily proportions of the focal bellbird vocalizations assigned to each category by the cross-validated sympatric-only classifier. Montezuma Oropendola (`r sum(focal_pred$sympatric$predicted == "Psarocolius montezuma")` clips) is not modeled. Clips below their species' threshold are unassigned.
 
 ```{r time data}
-rec_info <- read.table("./data/raw/Recording_dates_.csv", header = TRUE, sep = ";")
+rec_info <- read.table("./data/raw/Recording_dates_.csv", header = TRUE, sep = ";", encoding = "latin1")
+# file names are matched on their ASCII characters only: the table is Latin-1 and the "ó" of the
+# phone recordings "Nueva-grabación-*.wav" is corrupted in it, so exact matching dropped them
+file_key <- function(x) gsub("[^A-Za-z0-9._-]", "", iconv(x, "UTF-8", "ASCII", sub = ""), useBytes = TRUE)
+rec_info$key <- gsub("[^A-Za-z0-9._-]", "", rec_info$sound.files, useBytes = TRUE)
 # dates are written with Spanish month abbreviations (e.g. 05-ago-20); they are converted to
 # month numbers so that parsing does not depend on the locale
 rec_info$date <- gsub("/", "-", rec_info$date)
@@ -359,7 +363,7 @@ rec_info$date <- as.Date(sprintf("20%s-%02d-%s", sapply(dp, `[`, 3), month_num[s
 
 fp <- focal_pred$sympatric
 fp$recording <- focal_meta$recording[match(fp$clip, focal_meta$clip)]
-fp$date <- rec_info$date[match(fp$recording, rec_info$sound.files)]
+fp$date <- rec_info$date[match(file_key(fp$recording), rec_info$key)]
 cat(sum(is.na(fp$date)), "clips without a recording date\n")
 fp <- fp[!is.na(fp$date), ]
 
@@ -696,7 +700,7 @@ if (!file.exists(snr_file)) {
 snr <- read.csv(snr_file)
 
 q$snr <- snr$snr[match(q$clip, snr$clip)]
-q$equipment <- rec_info$equipment[match(q$recording, rec_info$sound.files)]
+q$equipment <- rec_info$equipment[match(file_key(q$recording), rec_info$key)]
 ref_snr <- snr$snr[match(rownames(emb_ref), snr$clip)]
 
 snr_sum <- function(x) sprintf("%.1f (%.1f–%.1f)", median(x), quantile(x, 0.25), quantile(x, 0.75))
@@ -1038,7 +1042,7 @@ cons9 <- as_draws_df(mod9$cons)$b_scalejulian_day
 
 ### Consistency of the imitations and of the own song
 
-During vocal learning, copies typically become both more similar to the target and more consistent. Consistency is the variability within a time window (the recording day): for each clip, the mean cosine similarity of its embedding to each of the other clips of the same type recorded on the same day (day × type combinations with at least 5 clips). Higher values mean more consistent. Unlike the similarity to a centroid of the day's clips (with or without the clip itself), the expected value of this mean pairwise similarity does not depend on the number of clips of the day (only its precision does), which matters because the number of own-song clips per day increased through the season. Two checks: the main model refitted with the (log) number of clips of the day × type combination as a covariate, and a rarefied version in which each day × type combination is repeatedly subsampled to 5 clips (`r 100` draws) and its mean pairwise similarity averaged across draws, modelled at the level of the combination.
+During vocal learning, copies typically become both more similar to the target and more consistent. Consistency is the variability within a time window (the recording day): for each clip, the mean cosine similarity of its embedding to each of the other clips of the same type recorded on the same day (day × type combinations with at least 5 clips). Higher values mean more consistent. Unlike the similarity to a centroid of the day's clips (with or without the clip itself), the expected value of this mean pairwise similarity does not depend on the number of clips of the day (only its precision does), which matters because the number of own-song clips per day increased through the season. Three checks: the main model refitted with the (log) number of clips of the day × type combination as a covariate; the main model with the residual SD modelled as a function of the (log) number of clips of the combination (the mean pairwise similarity of a clip in a large group is less noisy, so these clips get more weight, with the amount estimated from the data rather than fixed through weights); and a rarefied version in which each day × type combination is repeatedly subsampled to 5 clips (`r 100` draws) and its mean pairwise similarity averaged across draws, modelled at the level of the combination.
 
 ```{r consistency by type}
 qc <- q_l
@@ -1076,13 +1080,26 @@ mod12_n <- fit_q(scale(consistency) ~ species * scale(julian_day) + scale(log(n_
                  qc, "consistency_pairwise_by_type_n_through_time")
 mod12_r <- fit_q(scale(consistency) ~ species * scale(julian_day) + scale(snr) + scale(snr_long) + (1 | day),
                  qc_g, "consistency_rarefied_by_type_through_time")
+# residual SD as a function of the number of clips of the group (log scale)
+priors_sigma <- c(prior(normal(0, 1), class = "b"), prior(exponential(1), class = "sd"),
+                  prior(normal(0, 1), class = "b", dpar = "sigma"))
+fit_sigma <- function(formula, data, name) brm(bf(formula, sigma ~ scale(log(n_group))), data = data, prior = priors_sigma,
+                                               chains = chains, iter = iter, cores = cores, control = list(adapt_delta = 0.99),
+                                               seed = 123, file = file.path(fit_dir, name), file_refit = "on_change")
+mod12_s <- fit_sigma(scale(consistency) ~ species * scale(julian_day) + scale(snr) + scale(snr_long) + (1 | day/recording),
+                     qc, "consistency_pairwise_by_type_sigma_through_time")
+sigma_n <- function(fit, model) {
+    x <- as_draws_df(fit)$b_sigma_scalelogn_group
+    data.frame(Model = model, Estimate = mean(x), `2.5%` = quantile(x, 0.025), `97.5%` = quantile(x, 0.975),
+               check.names = FALSE, row.names = NULL)
+}
 ```
 
 ```{r mod12 summary}
 #| results: "asis"
 #| fig-height: 5
 
-for (m in list(mod12, mod12_n, mod12_r))
+for (m in list(mod12, mod12_n, mod12_s, mod12_r))
     extended_summary(m, n.posterior = 1000, fill = mako(10)[8], trace.palette = mako,
                      remove.intercepts = FALSE, highlight = TRUE, print.name = FALSE)
 ```
@@ -1093,9 +1110,12 @@ sd12 <- slope_diff(mod12, "Consistency", "Both SNR measures")
 kable(sl12, digits = 3, row.names = FALSE, caption = "Slopes of consistency through time (SD per SD of date)")
 sl12_chk <- rbind(cbind(Version = "Mean pairwise similarity (main)", sl12),
                   cbind(Version = "+ log number of clips of the day", species_slopes(mod12_n, "Consistency")),
+                  cbind(Version = "Residual SD depends on log number of clips of the day", species_slopes(mod12_s, "Consistency")),
                   cbind(Version = "Rarefied to 5 clips per day (one value per day × type)", species_slopes(mod12_r, "Consistency")))
 kable(sl12_chk[, c("Version", "Species", "Slope", "2.5%", "97.5%")], digits = 3, row.names = FALSE,
-      caption = "Consistency slopes in the main model and the two sample-size checks")
+      caption = "Consistency slopes in the main model and the three sample-size checks")
+kable(sigma_n(mod12_s, "Consistency by type"), digits = 3, row.names = FALSE,
+      caption = "Effect of the log number of clips of the day × type on the log residual SD (negative: larger groups less noisy)")
 kable(sd12, digits = 3, row.names = FALSE, caption = "Difference from the slope of the toucan-like vocalizations")
 ```
 
@@ -1270,7 +1290,7 @@ extended_summary(mod10, n.posterior = 1000, fill = mako(10)[8], trace.palette = 
 
 For the focal clips assigned to Nicaragua or Talamanca:
 
-- **Consistency within dialect**: mean cosine similarity of each clip to each of the other clips of the same dialect recorded on the same day (as for the consistency of each vocalization type; day × dialect combinations with at least 5 clips). Higher values mean more consistent. Check: rarefied to 5 clips per day × dialect. Benchmark: the same measure for reference clips of the same dialect, relative to the other clips of their own recording (recordings with at least 5 clips)
+- **Consistency within dialect**: mean cosine similarity of each clip to each of the other clips of the same dialect recorded on the same day (as for the consistency of each vocalization type; day × dialect combinations with at least 5 clips). Higher values mean more consistent. Checks: residual SD modelled as a function of the (log) number of clips of the day × dialect, and rarefied to 5 clips per day × dialect. Benchmark: the same measure for reference clips of the same dialect, relative to the other clips of their own recording (recordings with at least 5 clips)
 - **Similarity within dialect**: neighbour similarity (mean cosine similarity to the 5 most similar clips) to the reference clips of the assigned dialect, subsampled 20 times to the size of the smallest of the two (`r min(table(dfolds$species)[c("Nicaragua", "Talamanca")])` clips), and its typicality percentile among the reference clips of that dialect (scored against clips of the same dialect from other recordings)
 
 ```{r within dialect measures}
@@ -1347,13 +1367,16 @@ bd_g <- do.call(rbind, lapply(split(bd_l, bd_l$day_dialect), function(d)
 mod11_r <- brm(scale(consistency) ~ dialect * scale(julian_day) + scale(snr) + scale(snr_long) + (1 | day), data = bd_g,
                prior = priors5, chains = chains, iter = iter, cores = cores, control = list(adapt_delta = 0.99), seed = 123,
                file = file.path(fit_dir, "own_song_consistency_rarefied_within_dialect_through_time"), file_refit = "on_change")
+# residual SD as a function of the number of clips of the day x dialect (log scale)
+mod11_s <- fit_sigma(scale(consistency) ~ dialect * scale(julian_day) + scale(snr) + scale(snr_long) + (1 | day/recording),
+                     bd_l, "own_song_consistency_pairwise_sigma_within_dialect_through_time")
 ```
 
 ```{r mod11 summary}
 #| results: "asis"
 #| fig-height: 4
 
-for (m in c(mod11, list(mod11_r)))
+for (m in c(mod11, list(mod11_s, mod11_r)))
     extended_summary(m, n.posterior = 1000, fill = mako(10)[8], trace.palette = mako,
                      remove.intercepts = FALSE, highlight = TRUE, print.name = FALSE)
 ```
@@ -1369,6 +1392,7 @@ x_sp <- as_draws_df(mod11$sim_sp)$b_scalejulian_day
 x_sp0 <- as_draws_df(mod11$sim_sp0)$b_scalejulian_day
 x_d <- as_draws_df(mod10)$b_scalejulian_day
 sl11 <- rbind(dialect_slopes(mod11$cons, "Consistency within day × dialect"),
+              dialect_slopes(mod11_s, "Consistency within day × dialect, residual SD depends on log number of clips"),
               dialect_slopes(mod11_r, "Consistency within day × dialect, rarefied to 5 clips"),
               dialect_slopes(mod11$sim, "Neighbour similarity to the dialect"),
               data.frame(Measure = "Neighbour similarity to Three-wattled Bellbird, not adjusted for dialect", Dialect = "Both", Slope = mean(x_sp0),
@@ -1376,6 +1400,8 @@ sl11 <- rbind(dialect_slopes(mod11$cons, "Consistency within day × dialect"),
               data.frame(Measure = "Neighbour similarity to Three-wattled Bellbird, adjusted for dialect", Dialect = "Both", Slope = mean(x_sp),
                          `2.5%` = quantile(x_sp, 0.025), `97.5%` = quantile(x_sp, 0.975), check.names = FALSE, row.names = NULL))
 kable(sl11, digits = 3, row.names = FALSE, caption = "Slopes through time (SD per SD of date)")
+kable(sigma_n(mod11_s, "Consistency within day × dialect"), digits = 3, row.names = FALSE,
+      caption = "Effect of the log number of clips of the day × dialect on the log residual SD (negative: larger groups less noisy)")
 
 # per-clip dialect data for the paper figure (presentation/paper_figure_dialects.R)
 fd_out <- fd[, c("clip", "recording", "date", "dialect", "dialect_conf", "snr", "snr_long")]

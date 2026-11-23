@@ -303,6 +303,82 @@ Saranathan et al. 2007; Kroodsma et al. 2013
 :::
 
 
+## Learning in *Procnias* {visibility="hidden"}
+
+<!-- close-up of the tree made by bird_orders_phylogeny.R (same colours as the two slides above) -->
+
+:::: {.columns}
+
+::: {.column width="40%"}
+![](images/filogenia_ordenes_detalle.png){fig-alt="Close-up of the phylogeny: songbirds, parrots and Tyranni with the bellbird" height="560px"}
+:::
+
+::: {.column width="60%"}
+```{r}
+#| fig-width: 4.6
+#| fig-height: 4.6
+#| out-width: "51%"
+#| fig-alt: "Map of Costa Rica with three bellbird dialects (Nicaragua, Monteverde and Talamanca) and an example spectrogram of each"
+# dialect map: Costa Rica with three bellbird dialects and the best-SNR example of each. The
+# relief base map comes from dialect_map_base.R and the sounds from dialect_spectrograms.R;
+# the spectrograms are drawn here so they follow spectro_pal
+map_ext <- c(xmin = -86.25, xmax = -82.45, ymin = 7.95, ymax = 11.75)   # as in dialect_map_base.R
+dial <- data.frame(
+    key = c("nicaraguense", "monteverde", "talamanca"),
+    label = c("Nicaragua", "Monteverde", "Talamanca"),
+    lon = c(-84.95, -84.82, -83.30),      # point: CR/Nicaragua border, Monteverde, Talamanca
+    lat = c(11.07, 10.30, 9.40),
+    sx = c(-84.43, -85.30, -83.10),       # centre of the spectrogram (map coordinates)
+    sy = c(11.10, 9.70, 10.02),
+    lx = c(-85.08, -84.66, -83.45),       # dialect name, beside the point (hjust: 1 = to its left)
+    hj = c(1, 0, 1)
+)
+spec_w <- 0.8; spec_h <- 0.94            # size of each spectrogram (degrees)
+for (k in dial$key) {
+    ex <- dynaspec(file.path("images", paste0("dialecto_", k, ".wav")), flim = c(0, 7)) +
+        ds_spectrogram(wl = 512, ovlp = ovlp) +
+        ds_theme(axis.type = "none", pal = spectro_pal, bg = "transparent") +
+        ds_static(width = 360, height = 420, res = 150)
+    invisible(save_dynaspec(ex, file.path("images", paste0("espectro_dialecto_", k, ".png")),
+                            play = FALSE, verbose = FALSE))
+}
+map_dial <- ggplot() +
+    annotation_raster(png::readPNG("images/mapa_dialectos_base.png"), xmin = map_ext[["xmin"]],
+                      xmax = map_ext[["xmax"]], ymin = map_ext[["ymin"]], ymax = map_ext[["ymax"]]) +
+    geom_segment(data = dial, aes(x = lon, y = lat, xend = sx, yend = sy),
+                 colour = deck_cols[["titulo"]], linewidth = 0.6)
+for (i in seq_len(nrow(dial))) {
+    img <- png::readPNG(file.path("images", paste0("espectro_dialecto_", dial$key[i], ".png")))
+    map_dial <- map_dial +
+        annotation_raster(img, xmin = dial$sx[i] - spec_w / 2, xmax = dial$sx[i] + spec_w / 2,
+                          ymin = dial$sy[i] - spec_h / 2, ymax = dial$sy[i] + spec_h / 2)
+}
+# thin frame around each spectrogram
+map_dial <- map_dial +
+    geom_rect(data = dial, aes(xmin = sx - spec_w / 2, xmax = sx + spec_w / 2,
+                               ymin = sy - spec_h / 2, ymax = sy + spec_h / 2),
+              fill = NA, colour = "#888888", linewidth = 0.4)
+map_dial +
+    geom_point(data = dial, aes(lon, lat), shape = 21, size = 3.6, stroke = 1,
+               fill = deck_cols[["titulo"]], colour = "white") +
+    geom_label(data = dial, aes(lx, lat, label = label, hjust = hj), size = 4, fontface = "bold",
+               family = font_family, colour = deck_cols[["texto"]], fill = alpha("white", 0.75),
+               linewidth = 0, label.padding = grid::unit(0.12, "lines")) +
+    coord_sf(xlim = map_ext[c("xmin", "xmax")], ylim = map_ext[c("ymin", "ymax")], expand = FALSE,
+             crs = 4326, default_crs = 4326) +
+    theme_void() +
+    theme(plot.background = element_rect(fill = "#dfe9ef", colour = NA),   # sea colour of the base map
+          panel.border = element_rect(fill = NA, colour = "#888888", linewidth = 1.2),   # grey frame
+          plot.margin = margin(0, 0, 0, 0))
+```
+:::
+
+
+::: {.fuente}
+Dialects: Saranathan et al. 2007; Kroodsma et al. 2013
+:::
+::::
+
 ## {.video-subtitulo background-video="images/adult_bellbird_spectrogram_short_black_en.mp4" background-size="contain" background-color="black"}
 
 <div class="subtitulo-video sobre-espectro" style="--alto: 0.01; --tamano: 32px">Adult <i>P. tricarunculatus</i> in Monteverde, Costa Rica</div>
@@ -926,7 +1002,71 @@ ggplot(q_points, aes(date, value, colour = species, fill = species)) +
 ```
 
 ::: {.notes}
-**About 30 s (it adds to the times of the following slides).** Did the imitations get better? During vocal learning, copies usually become more similar to the target and more consistent. Top: similarity of each vocalization to the closest real vocalizations of the species it was assigned to, in the generic BirdNET embedding space, which does not depend on our classifiers. Bottom: consistency, how similar each vocalization is to the others of the same type sung that day. Both are corrected for recording quality, with recording day as the unit of replication. The toucan and aracari imitations became neither more similar nor more consistent over the season. The bellbird's own song became more bellbird-like (asterisk: slope 0.36, 95% CI 0.18–0.53), more so than the toucan-like sounds from the same recordings, so it is not a recording artifact; part of this comes from a shift between the two dialects it sings. But it did not become more consistent. So the change over time is in its own song, not in how well it imitates.
+**About 30 s (it adds to the times of the following slides).** Did the imitations get better? During vocal learning, copies usually become more similar to the target and more consistent. Top: similarity of each vocalization to the closest real vocalizations of the species it was assigned to, in the generic BirdNET embedding space, which does not depend on our classifiers. Bottom: consistency, how similar each vocalization is to the others of the same type sung that day. Both are corrected for recording quality, with recording day as the unit of replication. The toucan and aracari imitations became neither more similar nor more consistent over the season. The bellbird's own song became more bellbird-like (asterisk: slope 0.36, 95% CI 0.18–0.54), more so than the toucan-like sounds from the same recordings, so it is not a recording artifact; part of this comes from a shift between the two dialects it sings. But it did not become more consistent. So the change over time is in its own song, not in how well it imitates.
+:::
+
+## Which dialect does it sing? {.titulo-pequeno}
+
+```{r}
+#| label: dialects
+#| fig-width: 10
+#| fig-height: 5.6
+#| fig-alt: "Left: share of the focal bellbird's own-species vocalizations from the Talamanca rather than the Nicaragua dialect on each recording day, increasing through 2020. Right: similarity of each vocalization to real vocalizations of its dialect, increasing for Talamanca and flat for Nicaragua"
+
+# own-species vocalizations of the focal bellbird assigned by the dialect classifier, with the
+# model trends (prepare_slide_data.R)
+d_pts <- read.csv("./data/dialect_points.csv")
+d_curve <- read.csv("./data/dialect_curve.csv")
+d_sim <- read.csv("./data/dialect_similarity_points.csv")
+d_sim_curves <- read.csv("./data/dialect_similarity_curves.csv")
+d_slopes <- read.csv("./data/dialect_slopes.csv")
+for (nm in c("d_pts", "d_curve", "d_sim", "d_sim_curves")) { d <- get(nm); d$date <- as.Date(d$date); assign(nm, d) }
+dial_cols <- c(Nicaragua = "#3B5A8C", Talamanca = "#3FA28A")
+d_breaks <- as.Date(sprintf("2020-%02d-01", c(4, 7, 10)))
+d_xlim <- as.Date(c("2020-04-01", "2020-11-12"))   # same date range in both panels
+# asterisk where the 95% CI of the slope excludes 0
+d_sig <- d_slopes[sign(d_slopes$low) == sign(d_slopes$high), ]
+star <- function(y) annotation_custom(grid::textGrob("*", x = grid::unit(0.3, "cm"), hjust = 0,
+                                      gp = grid::gpar(fontsize = 30, fontface = "bold", col = deck_cols[["texto"]])),
+                                      xmin = Inf, xmax = Inf, ymin = y, ymax = y)
+d_end <- d_curve[which.max(d_curve$date), ]
+
+p_share <- ggplot(d_pts, aes(date, prop)) +
+    geom_ribbon(data = d_curve, aes(ymin = low, ymax = high), fill = dial_cols[["Talamanca"]], alpha = 0.3) +
+    geom_line(data = d_curve, colour = dial_cols[["Talamanca"]], linewidth = 1.8) +
+    geom_point(aes(size = n), shape = 21, fill = dial_cols[["Talamanca"]], colour = "white", alpha = 0.8) +
+    (if ("talamanca_share" %in% d_sig$measure) star(d_end$prop)) +
+    scale_size_area(max_size = 10, name = "Vocalizations") +
+    scale_x_date(breaks = d_breaks, labels = c("Apr", "Jul", "Oct")) +
+    scale_y_continuous(labels = label_percent(), limits = c(0, 1)) +
+    coord_cartesian(xlim = d_xlim, clip = "off") +
+    labs(x = "2020", y = "Talamanca rather than Nicaragua") +
+    # size legend inside the empty upper left corner, so both panels have the same height
+    theme(legend.position = "inside", legend.position.inside = c(0.02, 1), legend.justification = c(0, 1),
+          legend.direction = "horizontal", legend.title.position = "top", legend.background = element_blank(),
+          plot.margin = margin(5, 25, 5, 5))
+
+s_end <- do.call(rbind, lapply(split(d_sim_curves, d_sim_curves$dialect), function(d) d[which.max(d$date), ]))
+p_sim <- ggplot(d_sim, aes(date, value, colour = dialect, fill = dialect)) +
+    geom_jitter(width = 1, height = 0, alpha = 0.18, size = 1.3) +
+    geom_ribbon(data = d_sim_curves, aes(ymin = low, ymax = high), alpha = 0.3, colour = NA) +
+    geom_line(data = d_sim_curves, linewidth = 1.8) +
+    # dialect names at the end of each line, and asterisks where the slope differs from zero
+    geom_text(data = s_end, aes(x = date + 6, y = value,
+                                label = paste0(dialect, ifelse(dialect %in% d_sig$dialect[d_sig$measure == "similarity"], " *", ""))),
+              hjust = 0, size = 6, fontface = "bold") +
+    scale_colour_manual(values = dial_cols, guide = "none") +
+    scale_fill_manual(values = dial_cols, guide = "none") +
+    scale_x_date(breaks = d_breaks, labels = c("Apr", "Jul", "Oct")) +
+    coord_cartesian(xlim = d_xlim, clip = "off") +
+    labs(x = "2020", y = "Similarity to its dialect") +
+    theme(plot.margin = margin(5, 110, 5, 15))
+
+cowplot::plot_grid(p_share, p_sim, nrow = 1, align = "h", axis = "tb", rel_widths = c(1, 1.1))
+```
+
+::: {.notes}
+**About 30 s (it adds to the times of the following slides).** The focal bellbird sings its own song in two dialects, Nicaragua and Talamanca, assigned by a classifier trained on adults of known dialect. Left: over the season, the share of its own-species vocalizations that were Talamanca rather than Nicaragua tended to increase (slope `r sprintf("%.2f", d_slopes$slope[1])` log-odds per SD of date, 95% CI `r sprintf("%.2f–%.2f", d_slopes$low[1], d_slopes$high[1])`; no asterisk because the interval just includes zero). Right: similarity of each vocalization to real vocalizations of its dialect, corrected for recording quality. Its Talamanca song became more Talamanca-like (asterisk: `r sprintf("%.2f, 95%% CI %.2f–%.2f", d_slopes$slope[3], d_slopes$low[3], d_slopes$high[3])`), while its Nicaragua song did not change. So the bellbird's own song improved through its Talamanca dialect, which it also tended to sing more often.
 :::
 
 ## {.video-subtitulo background-video="images/hanging_with_models_short_web.mp4" background-size="contain" background-color="black"}

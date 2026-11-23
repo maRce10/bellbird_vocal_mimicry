@@ -111,6 +111,42 @@ write.csv(do.call(rbind, qpoints), file.path(out_data, "quality_points.csv"), ro
 write.csv(do.call(rbind, qcurves), file.path(out_data, "quality_curves.csv"), row.names = FALSE)
 write.csv(do.call(rbind, qslopes), file.path(out_data, "quality_slopes.csv"), row.names = FALSE)
 
+# ---- dialects of the own song through time -----------------------------------------------
+# A: daily proportion of Talamanca rather than Nicaragua own-song clips and the Bernoulli trend
+# (focal_dialect_through_time); B: neighbour similarity of each clip to the reference clips of its
+# assigned dialect and its trends at average SNR (own_song_similarity_within_dialect_through_time)
+fd <- read.csv("data/processed/focal_dialects.csv")
+fd$date <- as.Date(fd$date)
+nt <- fd[fd$dialect %in% c("Nicaragua", "Talamanca"), ]
+dpts <- aggregate(dialect ~ date, nt, function(x) c(p = mean(x == "Talamanca"), n = length(x)))
+dpts <- data.frame(date = dpts$date, prop = dpts$dialect[, "p"], n = dpts$dialect[, "n"])
+write.csv(dpts, file.path(out_data, "dialect_points.csv"), row.names = FALSE)
+d_days <- seq(min(fd$date), max(fd$date), length.out = 80)
+d_jd <- as.numeric(format(d_days, "%j"))
+ep <- posterior_epred(readRDS("data/processed/cv_fits/focal_dialect_through_time.rds"),
+                      newdata = data.frame(julian_day = d_jd), re_formula = NA)
+write.csv(data.frame(date = d_days, prop = colMeans(ep), low = apply(ep, 2, quantile, 0.025),
+                     high = apply(ep, 2, quantile, 0.975)),
+          file.path(out_data, "dialect_curve.csv"), row.names = FALSE)
+
+m11 <- readRDS("data/processed/cv_fits/own_song_similarity_within_dialect_through_time.rds")
+d11 <- m11$data
+write.csv(data.frame(date = as.Date(d11$julian_day - 1, origin = "2020-01-01"), dialect = as.character(d11$dialect),
+                     value = d11$knn_d), file.path(out_data, "dialect_similarity_points.csv"), row.names = FALSE)
+g <- expand.grid(julian_day = d_jd, dialect = c("Nicaragua", "Talamanca"), stringsAsFactors = FALSE)
+g$snr <- mean(d11$snr); g$snr_long <- mean(d11$snr_long)
+ep <- posterior_epred(m11, newdata = g, re_formula = NA) * sd(d11$knn_d) + mean(d11$knn_d)
+write.csv(data.frame(date = as.Date(g$julian_day - 1, origin = "2020-01-01"), dialect = g$dialect, value = colMeans(ep),
+                     low = apply(ep, 2, quantile, 0.025), high = apply(ep, 2, quantile, 0.975)),
+          file.path(out_data, "dialect_similarity_curves.csv"), row.names = FALSE)
+post <- as_draws_df(m11)
+sl <- cbind(Nicaragua = post$b_scalejulian_day, Talamanca = post$b_scalejulian_day + post[["b_dialectTalamanca:scalejulian_day"]])
+x10 <- as_draws_df(readRDS("data/processed/cv_fits/focal_dialect_through_time.rds"))$b_scalejulian_day
+write.csv(data.frame(measure = c("talamanca_share", "similarity", "similarity"), dialect = c("Both", colnames(sl)),
+                     slope = c(mean(x10), colMeans(sl)), low = c(quantile(x10, 0.025), apply(sl, 2, quantile, 0.025)),
+                     high = c(quantile(x10, 0.975), apply(sl, 2, quantile, 0.975))),
+          file.path(out_data, "dialect_slopes.csv"), row.names = FALSE)
+
 # ---- numbers quoted on the slides --------------------------------------------------------
 fit1 <- readRDS("data/processed/cv_fits/sympatric_allopatric_focal.rds")
 p <- plogis(as_draws_df(fit1)$b_Intercept)

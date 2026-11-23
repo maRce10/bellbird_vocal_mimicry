@@ -1278,7 +1278,71 @@ ggplot(q_points, aes(date, value, colour = species, fill = species)) +
 ```
 
 ::: {.notes}
-**Unos 30 s (se suman a los tiempos de las diapositivas siguientes).** ¿Mejoraron las imitaciones? Durante el aprendizaje vocal, las copias suelen volverse más parecidas al modelo y más consistentes. Arriba: semejanza de cada vocalización con las vocalizaciones reales más parecidas de la especie asignada, en el espacio de embeddings genérico de BirdNET, que no depende de nuestros clasificadores. Abajo: consistencia, qué tan parecida es cada vocalización a las demás del mismo tipo cantadas ese día. Ambas están corregidas por la calidad de grabación, con el día de grabación como unidad de replicación. Las imitaciones del tucán y del aracari no se volvieron ni más parecidas ni más consistentes durante la temporada. El canto propio se volvió más parecido al de campana (asterisco: pendiente 0,36, IC 95 %: 0,18–0,53), más que los sonidos tipo tucán de las mismas grabaciones, así que no es un artefacto de grabación; parte se debe a un cambio entre los dos dialectos que canta. Pero no se volvió más consistente. El cambio en el tiempo está en su canto propio, no en qué tan bien imita.
+**Unos 30 s (se suman a los tiempos de las diapositivas siguientes).** ¿Mejoraron las imitaciones? Durante el aprendizaje vocal, las copias suelen volverse más parecidas al modelo y más consistentes. Arriba: semejanza de cada vocalización con las vocalizaciones reales más parecidas de la especie asignada, en el espacio de embeddings genérico de BirdNET, que no depende de nuestros clasificadores. Abajo: consistencia, qué tan parecida es cada vocalización a las demás del mismo tipo cantadas ese día. Ambas están corregidas por la calidad de grabación, con el día de grabación como unidad de replicación. Las imitaciones del tucán y del aracari no se volvieron ni más parecidas ni más consistentes durante la temporada. El canto propio se volvió más parecido al de campana (asterisco: pendiente 0,36, IC 95 %: 0,18–0,54), más que los sonidos tipo tucán de las mismas grabaciones, así que no es un artefacto de grabación; parte se debe a un cambio entre los dos dialectos que canta. Pero no se volvió más consistente. El cambio en el tiempo está en su canto propio, no en qué tan bien imita.
+:::
+
+## ¿Qué dialecto canta? {.titulo-pequeno}
+
+```{r}
+#| label: dialects
+#| fig-width: 10
+#| fig-height: 5.6
+#| fig-alt: "Izquierda: proporción de las vocalizaciones propias de la campana focal del dialecto Talamanca en lugar del Nicaragua en cada día de grabación, en aumento durante 2020. Derecha: semejanza de cada vocalización con vocalizaciones reales de su dialecto, en aumento para Talamanca y estable para Nicaragua"
+
+# own-species vocalizations of the focal bellbird assigned by the dialect classifier, with the
+# model trends (prepare_slide_data.R)
+d_pts <- read.csv("./data/dialect_points.csv")
+d_curve <- read.csv("./data/dialect_curve.csv")
+d_sim <- read.csv("./data/dialect_similarity_points.csv")
+d_sim_curves <- read.csv("./data/dialect_similarity_curves.csv")
+d_slopes <- read.csv("./data/dialect_slopes.csv")
+for (nm in c("d_pts", "d_curve", "d_sim", "d_sim_curves")) { d <- get(nm); d$date <- as.Date(d$date); assign(nm, d) }
+dial_cols <- c(Nicaragua = "#3B5A8C", Talamanca = "#3FA28A")
+d_breaks <- as.Date(sprintf("2020-%02d-01", c(4, 7, 10)))
+d_xlim <- as.Date(c("2020-04-01", "2020-11-12"))   # same date range in both panels
+# asterisk where the 95% CI of the slope excludes 0
+d_sig <- d_slopes[sign(d_slopes$low) == sign(d_slopes$high), ]
+star <- function(y) annotation_custom(grid::textGrob("*", x = grid::unit(0.3, "cm"), hjust = 0,
+                                      gp = grid::gpar(fontsize = 30, fontface = "bold", col = deck_cols[["texto"]])),
+                                      xmin = Inf, xmax = Inf, ymin = y, ymax = y)
+d_end <- d_curve[which.max(d_curve$date), ]
+
+p_share <- ggplot(d_pts, aes(date, prop)) +
+    geom_ribbon(data = d_curve, aes(ymin = low, ymax = high), fill = dial_cols[["Talamanca"]], alpha = 0.3) +
+    geom_line(data = d_curve, colour = dial_cols[["Talamanca"]], linewidth = 1.8) +
+    geom_point(aes(size = n), shape = 21, fill = dial_cols[["Talamanca"]], colour = "white", alpha = 0.8) +
+    (if ("talamanca_share" %in% d_sig$measure) star(d_end$prop)) +
+    scale_size_area(max_size = 10, name = "Vocalizaciones") +
+    scale_x_date(breaks = d_breaks, labels = c("abr", "jul", "oct")) +
+    scale_y_continuous(labels = label_percent(), limits = c(0, 1)) +
+    coord_cartesian(xlim = d_xlim, clip = "off") +
+    labs(x = "2020", y = "Talamanca en lugar de Nicaragua") +
+    # size legend inside the empty upper left corner, so both panels have the same height
+    theme(legend.position = "inside", legend.position.inside = c(0.02, 1), legend.justification = c(0, 1),
+          legend.direction = "horizontal", legend.title.position = "top", legend.background = element_blank(),
+          plot.margin = margin(5, 25, 5, 5))
+
+s_end <- do.call(rbind, lapply(split(d_sim_curves, d_sim_curves$dialect), function(d) d[which.max(d$date), ]))
+p_sim <- ggplot(d_sim, aes(date, value, colour = dialect, fill = dialect)) +
+    geom_jitter(width = 1, height = 0, alpha = 0.18, size = 1.3) +
+    geom_ribbon(data = d_sim_curves, aes(ymin = low, ymax = high), alpha = 0.3, colour = NA) +
+    geom_line(data = d_sim_curves, linewidth = 1.8) +
+    # dialect names at the end of each line, and asterisks where the slope differs from zero
+    geom_text(data = s_end, aes(x = date + 6, y = value,
+                                label = paste0(dialect, ifelse(dialect %in% d_sig$dialect[d_sig$measure == "similarity"], " *", ""))),
+              hjust = 0, size = 6, fontface = "bold") +
+    scale_colour_manual(values = dial_cols, guide = "none") +
+    scale_fill_manual(values = dial_cols, guide = "none") +
+    scale_x_date(breaks = d_breaks, labels = c("abr", "jul", "oct")) +
+    coord_cartesian(xlim = d_xlim, clip = "off") +
+    labs(x = "2020", y = "Semejanza con su dialecto") +
+    theme(plot.margin = margin(5, 110, 5, 15))
+
+cowplot::plot_grid(p_share, p_sim, nrow = 1, align = "h", axis = "tb", rel_widths = c(1, 1.1))
+```
+
+::: {.notes}
+**Unos 30 s (se suman a los tiempos de las diapositivas siguientes).** La campana focal canta su canto propio en dos dialectos, Nicaragua y Talamanca, asignados con un clasificador entrenado con adultos de dialecto conocido. Izquierda: a lo largo de la temporada, la proporción de sus vocalizaciones propias de Talamanca en lugar de Nicaragua tendió a aumentar (pendiente `r sub("\\.", ",", sprintf("%.2f", d_slopes$slope[1]))` log-odds por DE de fecha, IC 95 %: `r gsub("\\.", ",", sprintf("%.2f–%.2f", d_slopes$low[1], d_slopes$high[1]))`; sin asterisco porque el intervalo apenas incluye el cero). Derecha: semejanza de cada vocalización con vocalizaciones reales de su dialecto, corregida por la calidad de grabación. Su canto Talamanca se volvió más parecido al de Talamanca (asterisco: `r gsub("\\.", ",", sprintf("%.2f, IC 95 %%: %.2f–%.2f", d_slopes$slope[3], d_slopes$low[3], d_slopes$high[3]))`), mientras que su canto Nicaragua no cambió. El canto propio de la campana mejoró en su dialecto Talamanca, que además tendió a cantar más a menudo.
 :::
 
 ## {.video-subtitulo background-video="images/hanging_with_models_short_web.mp4" background-size="contain" background-color="black"}
