@@ -65,26 +65,26 @@ knitr::opts_chunk$set(
 <!-- skyblue box -->
 
 ::: {.alert .alert-info}
+
 # Purpose {.unnumbered .unlisted}
 
--   Export audio clip set for training birdNET
+- Import and harmonize the Raven annotations of all recordings: the focal bellbird, the species it could have imitated, their allopatric relatives and other Three-wattled Bellbirds
+- Build an extended selection table with one clip per annotated vocalization
+- Export the clips used to train, evaluate and apply the BirdNET classifiers ([model fitting](birdnet_model_fitting.qmd)) and to compute the acoustic embeddings ([statistical analysis](statistical_analysis_cv.qmd))
+
+The code chunks are not run when the report is rendered (`eval: false`), because they need the raw recordings, which are not in the repository. They document how the files in `data/processed/` were produced.
+
 :::
 
- 
+# Data {.unnumbered}
 
-<!-- light brown box -->
+The recordings come from three sources:
 
-::: {.alert .alert-warning}
-# Report overview {.unnumbered .unlisted}
+- **Focal bellbird**: recordings of the juvenile Three-wattled Bellbird made in Monteverde, Costa Rica, between April and November 2020. Each vocalization was annotated in Raven with the species it resembled (Keel-billed Toucan, Collared Aracari, Montezuma Oropendola) or as the bellbird's own song
+- **Model and non-model species**: recordings (Xeno-canto and other sources, listed in `data/raw/`) of the three sympatric species the bellbird could have imitated (*Ramphastos sulfuratus*, *Pteroglossus torquatus*, *Psarocolius montezuma*) and of their closely related allopatric species, which could not have served as vocal models (*Ramphastos brevis*, *Pteroglossus erythropygius*, *Psarocolius guatimozinus*)
+- **Other bellbirds**: recordings of other Three-wattled Bellbirds from across the range, annotated with their dialect (Monteverde, Nicaragua, Panama or Talamanca) where known
 
--   You can have the sections listed here, for instance:
-
-    -   [Lorem ipsum](#lorem-ipsum)
-    -   [Takeaways](#takeaways)
-:::
-
- 
-
+Every annotated vocalization becomes one clip. Clips from the same recording are kept together in the cross-validation folds of the classifiers, so the recording is the unit of replication.
 
 # Load packages {.unnumbered .unlisted}
 
@@ -107,7 +107,16 @@ sketchy::load_packages(packages = packages)
 
 # Read annotations and create extended selection table
 
-'species.vocalization' column contains all the info about which species (and mimic individual) was singing and which sound or simpatric species was producing
+The annotation tables of all recordings are imported with `Rraven` and checked against the sound files with `warbleR::check_sels()` (one stranded point selection was removed). The annotators did not use exactly the same columns and labels, so the code below harmonizes them:
+
+- **`source`**: who produced the sound. `mimic_bellbird` for the focal bellbird, otherwise the species of the recording (other bellbirds are `Procnias tricarunculatus`)
+- **`Model species`**: for focal bellbird clips, the species the vocalization resembles; for the other recordings, the species itself
+- **`Vocalization`**: for focal bellbird clips, set from `Model species` (the bellbird itself for the own song); for other bellbirds, the dialect (or another vocalization type, such as babbling or aggressive calls); empty for the other species
+- **`species.vocalization`**: `source` and `Vocalization` pasted together with abbreviated genus names. It is the label used downstream, e.g. `mimic_P.tricarunculatus-R.sulfuratus` (focal bellbird, toucan-like), `mimic_P.tricarunculatus-adult` (focal bellbird, own song) or `P.tricarunculatus-Talamanca` (another bellbird of the Talamanca dialect)
+
+Babbling: the vocalizations of other bellbirds annotated as babbling (16 clips from two recordings) are kept in the table but left out of all the exported reference data. One focal bellbird recording (`Grab2-4.7.2020.wav`, 4 July 2020, 9 clips) was also annotated as babbling, but its model species is the bellbird, so the step that sets the vocalization of focal clips from `Model species` labels it as own song (`mimic_P.tricarunculatus-adult`). Its clips are therefore exported and analysed together with the other own-song clips.
+
+The selections are saved in `data/processed/pooled_annotations.csv` and as an extended selection table (`warbleR::selection_table()`, each clip with 0.05 s of margin before and after the vocalization) in `data/processed/extended_selection_table_sympatric_and_allopatric_species.RDS`.
 
 ```{r check annotations}
 #| eval: false
@@ -266,159 +275,6 @@ sels$Vocalization[
     sels$`Model species` != ""
 ]
 
-View(sels[
-  sels$selec.file %in%
-    sels$selec.file[
-      is.na(sels$Vocalization) & sels$source == "mimic_bellbird"
-    ],
-])
-
-
-sels$Vocalization[
-  sels$source == "mimic_bellbird" &
-    grepl("tricarunculatus", sels$`Model species`)
-] <- "Procnias tricarunculatus"
-
-sels$Vocalization[
-  sels$source == "mimic_bellbird" & grepl("montezuma", sels$`Model species`)
-] <- "Psarocolius montezuma"
-
-sels$Vocalization[
-  sels$source == "mimic_bellbird" & grepl("sulfuratus", sels$`Model species`)
-] <- "Ramphastos sulfuratus"
-
-sels$Vocalization[
-  sels$source == "mimic_bellbird" & grepl("torquatus", sels$`Model species`)
-] <- "Pteroglossus torquatus"
-
-sels$Vocalization[
-  sels$source == "mimic_bellbird" & grepl("torquatus", sels$`Model species`)
-] <- "Pteroglossus torquatus"
-
-sels$`Model species`[
-  sels$source == "mimic_bellbird" &
-    grepl("Campan_0106.Table.1.selections.txt", sels$selec.file) &
-    is.na(sels$Vocalization)
-] <- sels$Vocalization[
-  sels$source == "mimic_bellbird" &
-    grepl("Campan_0106.Table.1.selections.txt", sels$selec.file) &
-    is.na(sels$Vocalization)
-] <- "Ramphastos sulfuratus"
-
-sels$`Model species`[
-  sels$source == "mimic_bellbird" &
-    grepl("Campan_0108.Table.1.selections.txt", sels$selec.file) &
-    is.na(sels$Vocalization)
-] <- sels$Vocalization[
-  sels$source == "mimic_bellbird" &
-    grepl("Campan_0108.Table.1.selections.txt", sels$selec.file) &
-    is.na(sels$Vocalization)
-] <- "Procnias tricarunculatus"
-
-sels$`Model species`[
-  sels$source == "mimic_bellbird" &
-    grepl("Campan_0116.Table.1.selections.txt", sels$selec.file) &
-    is.na(sels$Vocalization)
-] <- sels$Vocalization[
-  sels$source == "mimic_bellbird" &
-    grepl("Campan_0116.Table.1.selections.txt", sels$selec.file) &
-    is.na(sels$Vocalization)
-] <- "Pteroglossus torquatus"
-
-
-table(sels$Vocalization[sels$source == "mimic_bellbird"])
-
-
-table(sels$Vocalization[
-  sels$source %in% c("mimic_bellbird", "Procnias tricarunculatus")
-])
-
-sels$species.vocalization <- paste(sels$source, sels$Vocalization, sep = "-")
-
-sels$species.vocalization <- ifelse(
-  sels$`Model species` %in%
-    c(
-      "Psarocolius guatimozinus",
-      "Pteroglossus erythropygius",
-      "Ramphastos brevis"
-    ),
-  gsub("-NA", "-non-model", sels$species.vocalization),
-  gsub("-NA", "-model", sels$species.vocalization)
-)
-
-
-sels$species.vocalization <- gsub(
-  "mimic_bellbird",
-  "mimic_P.tricarunculatus",
-  sels$species.vocalization
-)
-
-sels$species.vocalization <- gsub(
-  "Pteroglossus ",
-  "P.",
-  sels$species.vocalization
-)
-
-sels$species.vocalization <- gsub(
-  "Procnias tricarunculatus",
-  "P.tricarunculatus",
-  sels$species.vocalization
-)
-
-sels$species.vocalization <- gsub(
-  "Ramphastos ",
-  "R.",
-  sels$species.vocalization
-)
-
-sels$species.vocalization <- gsub(
-  "Psarocolius ",
-  "P.",
-  sels$species.vocalization
-)
-
-
-sels$species.vocalization <- gsub(
-  "mimic_P.tricarunculatus-P.tricarunculatus",
-  "mimic_P.tricarunculatus-adult",
-  sels$species.vocalization
-)
-
-sels$species.vocalization <- gsub(
-  "Whistle",
-  "whistle",
-  sels$species.vocalization
-)
-
-sels$species.vocalization <- gsub(
-  "Nicaraguan",
-  "Nicaragua",
-  sels$species.vocalization
-)
-
-sels$species.vocalization <- gsub(
-  "Talamancan",
-  "Talamanca",
-  sels$species.vocalization
-)
-
-# table(sels$species.vocalization)
-
-sels$sound.files <- gsub(".mp3$", ".wav", sels$sound.files)
-
-write.csv(sels, "./data/processed/pooled_annotations.csv", row.names = FALSE)
-
-
-# save as extended selection table
-est <- selection_table(
-  sels,
-  extended = TRUE,
-  mar = 0.05,
-  parallel = 10,
-  path = "./data/raw/recordings"
-)
-
-table(attr(est, "check.res")$sample.rate)
 
 
 sels$Vocalization[
@@ -573,9 +429,16 @@ saveRDS(
 )
 ```
 
-# Export data for birdNET 
+# Export data for BirdNET
 
-## Sympatric and allopatric species
+All clips are resampled to 48 kHz, the sampling rate BirdNET works with.
+
+## Model and non-model species and other bellbirds
+
+The reference clips (all sources except the focal bellbird, without babbling) are exported into one folder per species, in two versions:
+
+- **Annotated clips** (`train_data/` and `test_data/`): each vocalization with its 0.05 s margins, used to train the classifiers. They were first split 80/20 by recording into a training and a test set, but the cross-validation of the [model fitting](birdnet_model_fitting.qmd) report pools the two folders and assigns whole recordings to 5 folds, so this split only determines the folder layout
+- **2 s clips** (`sympatrics_and_allopatrics_2s/`): each vocalization padded to 2 s by repeating the background noise recorded before it (at the start and at the end), so that every clip fills one BirdNET input window. These are the versions classified when a clip is held out in cross-validation, and the ones used to compute the generic BirdNET embeddings
 ```{r}
 #| eval: false
 
@@ -668,7 +531,7 @@ for (i in spp) {
 }
 
 # export all at 2s long for getting embeddings 
-dir.create("./data/processed/birdnet_data/models_and_non_models_2s")
+dir.create("./data/processed/birdnet_data/sympatrics_and_allopatrics_2s")
 
 # Repeat each one till is 2 s long
 for ( i in 1:nrow(no_mimic)) {
@@ -685,13 +548,15 @@ for ( i in 1:nrow(no_mimic)) {
     
     wv_long <-cutw(wv_long, from = 0, to = 2, output = "Wave")
     
-    writeWave(wv_long, filename = paste0("./data/processed/birdnet_data/models_and_non_models_2s/", no_mimic$sound.files[i], ".wav"), extensible = FALSE)
+    writeWave(wv_long, filename = paste0("./data/processed/birdnet_data/sympatrics_and_allopatrics_2s/", no_mimic$sound.files[i], ".wav"), extensible = FALSE)
     
 }
 
 ```
 
-## Only other bellbirds
+## Other bellbirds only
+
+The 2 s clips of the other bellbirds are also exported on their own (`other_bellbirds/`). This folder was used only in exploratory embedding analyses; the reports take the other bellbirds from the folders above.
 ```{r}
 #| eval: false
 
@@ -723,50 +588,14 @@ for ( i in 1:nrow(other_bellbirds)) {
 
 ```
 
-## Mimic bellbird
+## Focal bellbird
 
-## Excluding babbling 
+All the annotated vocalizations of the focal bellbird are exported as 2 s clips (`mimic_bellbird/`), padded with background noise as above. These clips were never used for training: they are classified by the cross-validation models of each fold (ensemble) in the [model fitting](birdnet_model_fitting.qmd) report, and their embeddings are used in the [statistical analysis](statistical_analysis_cv.qmd).
+
 ```{r}
 #| eval: false
 
-# export mimic bird clips
-mimic <- est[
-    est$source == "mimic_bellbird" &
-        est$species.vocalization != "P.tricarunculatus-babbling",
-]
-
-table(mimic$species.vocalization)
-
-# Export them in 2s segments adding noise at the begining and end
-dir.create("./data/processed/birdnet_data/mimic_bellbird_no_babbling")
-
-# Repeat each one till is 2 s long
-for ( i in 1:nrow(mimic)) {
-    
-    # read only bell bird clip
-    wv <- read_sound_file(mimic, i)
-    background <- read_sound_file(mimic, i, from = 0.001, to = mimic$start[i])
-    wv_long <- pastew(background, wv, output = "Wave")    
-    
-    while(duration(wv_long) < 2){
-    wv_long <- pastew(wv_long, background, output = "Wave")    
-    wv_long <- pastew(background, wv_long, output = "Wave")    
-    }
-    
-    wv_long <-cutw(wv_long, from = 0, to = 2, output = "Wave")
-    
-    writeWave(wv_long, filename = paste0("./data/processed/birdnet_data/mimic_bellbird_no_babbling/", mimic$sound.files[i], ".wav"), extensible = FALSE)
-    
-}
-
-
-```
-
-## Including babbling 
-```{r}
-#| eval: false
-
-# export mimic bird clips
+# export focal bellbird clips
 mimic_bab <- est[
     est$source == "mimic_bellbird",
 ]
