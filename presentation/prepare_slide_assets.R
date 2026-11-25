@@ -14,7 +14,7 @@ out_data <- "presentation/data"
 out_img <- "presentation/images"
 fig_dir <- "data/raw/figure_audios&pictures/"
 
-# ---- spectrogram clips (same settings as the composite figure, scripts/test.qmd) ----
+# ---- spectrogram clips (same settings as the composite figure, scripts/composite_figure.qmd) ----
 
 lowpass <- list("CABBM.wav" = 8000, "RSBBM.wav" = 8000, "BBS.wav" = 7000)
 window_dur <- 3

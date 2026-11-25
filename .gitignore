@@ -50,3 +50,7 @@ Rplots.pdf
 *onflict*
 *onflicto*
 presentation/presentation.html
+
+# editor temporary files
+.Rapp.history
+.vdoc.*

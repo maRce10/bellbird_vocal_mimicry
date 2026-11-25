@@ -18,9 +18,10 @@ Vocal mimicry is hard to tell apart from chance acoustic resemblance. We retrain
 | `scripts/birdnet_acoustic_data_prep.qmd` | Annotations, selection tables and data export for BirdNET |
 | `scripts/birdnet_model_fitting.qmd` | BirdNET classifiers with 5-fold cross-validation grouped by recording, hyperparameter search and classification of the clips |
 | `scripts/statistical_analysis_cv.qmd` | Bayesian models of the classifications, the quality of the imitations and of the own song (long-window signal-to-noise ratio and recording equipment as covariates), the dialects of the focal bellbird and the robustness checks |
-| `scripts/birdnet_cv.sh`, `scripts/birdnet_cv_folds.py`, `scripts/birdnet_dialect_folds.py`, `scripts/birdnet_random_search.py`, `scripts/birdnet_cv_functions.R` | Cross-validation folds, training runs and helper functions used by the reports |
-| `scripts/statistical_analysis.qmd`, `scripts/statistical_analysis_from_detection_probabilities.qmd` | Earlier analyses without cross-validation (not on the website) |
-| `scripts/embeddings.ipynb`, `scripts/get_additional_acoustic_data.Rmd`, `scripts/test.qmd`, `scripts/colormaps.R` | Embeddings, additional recordings, composite figure and helpers (not on the website) |
+| `scripts/birdnet_cv.sh`, `scripts/birdnet_cv_folds.py`, `scripts/birdnet_dialect_folds.py`, `scripts/birdnet_random_search.py`, `scripts/train_birdnet.py`, `scripts/birdnet_cv_functions.R` | Cross-validation folds, training runs (`train_birdnet.py`: BirdNET-Analyzer training with fixed seeds) and helper functions used by the reports |
+| `scripts/composite_figure.qmd` | Composite figure of the focal bellbird's vocalizations next to those of its apparent models (`output/mimicry_composite_figure.png`) |
+| `scripts/embeddings.ipynb`, `scripts/get_additional_acoustic_data.Rmd`, `scripts/colormaps.R` | Embeddings, additional recordings and colour maps (not on the website) |
+| `archive/` | Earlier analyses without cross-validation, kept for the record and no longer maintained (not on the website) |
 | `presentation/` | Talk in Spanish (`presentation.qmd`) and English (`presentation_en.qmd`), their images and data, `prepare_slide_data.R` (results shown on the slides), `prepare_slide_assets.R` (sounds and videos) and the scripts of the paper figures (`paper_figure_dialects.R`, `export_paper_figures.sh`) |
 | `data/processed/` | Small derived tables: cross-validation folds, out-of-fold and focal predictions, and the dialect of each focal clip |
 | `output/` | Figures |
