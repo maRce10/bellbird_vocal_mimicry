@@ -4,25 +4,15 @@ toc: true
 lightbox: true
 ---
 
-Videos and images of the focal bellbird, of adult bellbirds and of the study results. Click on an image to enlarge it.
+Videos and photos of the focal bellbird, and a video of an adult Three-wattled Bellbird. Click on an image to enlarge it.
 
 ## Videos
 
 ::: {.media-grid}
 
 ::: {.media-item}
-<video controls preload="metadata" src="presentation/images/mimic_campana.mp4"></video>
-<p>The focal bellbird producing aracari-like and then toucan-like sounds (66 s)</p>
-:::
-
-::: {.media-item}
-<video controls preload="metadata" src="presentation/images/mimic_aracari.mp4"></video>
-<p>The focal bellbird producing aracari-like sounds (36 s)</p>
-:::
-
-::: {.media-item}
-<video controls preload="metadata" src="presentation/images/hanging_with_models_web.mp4"></video>
-<p>The focal bellbird next to a Collared Aracari and then a Keel-billed Toucan, two of its apparent models (42 s)</p>
+<video controls preload="metadata" src="presentation/images/focal_spectrogram_black_en.mp4"></video>
+<p>Vocalizations of the focal bellbird with their spectrogram</p>
 :::
 
 ::: {.media-item}
@@ -31,18 +21,8 @@ Videos and images of the focal bellbird, of adult bellbirds and of the study res
 :::
 
 ::: {.media-item}
-<video controls preload="metadata" src="presentation/images/focal_spectrogram_black_en.mp4"></video>
-<p>Vocalizations of the focal bellbird with their spectrogram</p>
-:::
-
-::: {.media-item}
 <video controls preload="metadata" src="presentation/images/adult_bellbird_spectrogram_short_black_en.mp4"></video>
 <p>Song of an adult Three-wattled Bellbird with its spectrogram</p>
-:::
-
-::: {.media-item}
-<video controls preload="metadata" src="presentation/images/adulto_monteverde.mp4"></video>
-<p>Adult male Three-wattled Bellbird singing in Monteverde (9 s)</p>
 :::
 
 :::
@@ -56,45 +36,5 @@ Videos and images of the focal bellbird, of adult bellbirds and of the study res
 ![The focal bellbird vocalizing](presentation/images/photo_singing.jpg){group="focal"}
 
 ![The focal bellbird with a Keel-billed Toucan](presentation/images/photo_toucan_bellbird.jpg){group="focal"}
-
-:::
-
-## Adult bellbirds
-
-::: {.media-grid}
-
-![](presentation/images/campana_david_full.jpeg){group="adults"}
-
-![](presentation/images/campana_david1.jpeg){group="adults"}
-
-![](presentation/images/campana_david2.jpeg){group="adults"}
-
-![](presentation/images/campana_david3.jpeg){group="adults"}
-
-![](presentation/images/campana_david4.jpeg){group="adults"}
-
-![](presentation/images/campana_david5.jpeg){group="adults"}
-
-![](presentation/images/campana_david6.jpeg){group="adults"}
-
-![](presentation/images/DSC_2564.jpg.jpeg){group="adults"}
-
-![](presentation/images/DSC_2551.jpg.jpeg){group="adults"}
-
-![](presentation/images/DSC_0769.jpg.jpeg){group="adults"}
-
-:::
-
-Photos: David Jimenez
-
-## Results
-
-::: {.figure-gallery}
-
-![Spectrograms of vocalizations of the focal bellbird](presentation/images/catalogo_campana_focal.jpeg){group="results"}
-
-![Vocalizations of the focal bellbird (left) next to those of its apparent models, the Montezuma Oropendola, the Collared Aracari and the Keel-billed Toucan, and of its own species (middle), with photos of the focal bellbird (right)](output/mimicry_composite_figure.png){group="results"}
-
-![Vocalizations classified as each heterospecific species by the classifier trained with sympatric and allopatric species. The focal bellbird was classified as the sympatric species of each pair (blue) about 10 times more often than as its allopatric relative (purple); other bellbirds, each classified by a model that never heard its recording, were almost never classified as another species.](output/sympatric_vs_allopatric_barplot.png){group="results"}
 
 :::

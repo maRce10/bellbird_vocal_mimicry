@@ -48,12 +48,17 @@ pb <- ggplot(pts, aes(date, p)) +
     labs(x = NULL, y = "Talamanca rather than\nNicaragua") +
     theme(legend.position = "top", legend.text = element_text(size = 12))
 
-# C: neighbour similarity to the reference vocalizations of the assigned dialect, at average SNR
-m11 <- readRDS("data/processed/cv_fits/own_song_similarity_within_dialect_through_time.rds")
+# C: neighbour similarity to the reference vocalizations of the assigned dialect, at average long-window SNR, averaged over equipment
+m11 <- readRDS("data/processed/cv_fits/own_song_similarity_within_dialect_snrlong_equipment_through_time.rds")
 d11 <- m11$data
-grid <- expand.grid(julian_day = jd, dialect = c("Nicaragua", "Talamanca"), stringsAsFactors = FALSE)
-grid$snr <- mean(d11$snr); grid$snr_long <- mean(d11$snr_long)
+grid <- expand.grid(julian_day = jd, dialect = c("Nicaragua", "Talamanca"), equipment = sort(unique(d11$equipment)),
+                    stringsAsFactors = FALSE)
+grid$snr_long <- mean(d11$snr_long)
+w <- as.numeric(table(d11$equipment)[grid$equipment]) / nrow(d11)
 ep <- posterior_epred(m11, newdata = grid, re_formula = NA) * sd(d11$knn_d) + mean(d11$knn_d)
+key <- paste(grid$julian_day, grid$dialect)
+ep <- t(rowsum(t(ep) * w, key, reorder = FALSE))
+grid <- grid[!duplicated(key), ]
 fc <- data.frame(date = rep(days, 2), dialect = grid$dialect, value = colMeans(ep),
                  low = apply(ep, 2, quantile, 0.025), high = apply(ep, 2, quantile, 0.975))
 d11$date <- as.Date(d11$julian_day - 1, origin = "2020-01-01")

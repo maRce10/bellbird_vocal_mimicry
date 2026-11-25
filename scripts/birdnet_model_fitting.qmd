@@ -281,13 +281,13 @@ conf_plot <- function(label, title) {
 conf_plot(ifelse(cv_conf$Freq > 0, cv_conf$Freq, ""), "Out-of-fold predictions (number of clips)")
 ```
 
-Normalized confusion matrices (each row divided by the number of clips of the true class, so rows sum to 1 and the diagonal is the recall of each class):
+Normalized confusion matrices (each row divided by the number of clips of the true class, so rows sum to 1 and the diagonal is the recall of each class; blank cells: no clips; <0.01: at least one clip but below 0.005):
 
 ```{r cv confusion normalized}
 #| fig-width: 12
 #| fig-height: 6
 
-conf_plot(ifelse(cv_conf$Freq > 0, sprintf("%.2f", cv_conf$prop), ""), "Out-of-fold predictions (proportion of the true class)")
+conf_plot(ifelse(cv_conf$Freq == 0, "", ifelse(cv_conf$prop < 0.005, "<0.01", sprintf("%.2f", cv_conf$prop))), "Out-of-fold predictions (proportion of the true class)")
 ```
 
 ## Other bellbirds

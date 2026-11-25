@@ -7,14 +7,14 @@ toc: false
 
 This site contains the analyses and the presentation of the study. We evaluated whether the vocalizations of a juvenile Three-wattled Bellbird (*Procnias tricarunculatus*) observed in Monteverde, Costa Rica, represent genuine mimicry of sympatric species or resemblances arising by chance. To do so, we retrained BirdNET with three sympatric species it could have imitated, their closely related allopatric species that could not have served as vocal models, and vocalizations of other bellbirds.
 
-The vocalizations of the focal individual were classified mostly as sympatric species, a bias not found in other bellbirds. Sounds resembling the Keel-billed Toucan (*Ramphastos sulfuratus*) and the Collared Aracari (*Pteroglossus torquatus*) were frequent in the first observations, and classification as bellbird increased over time. The imitations themselves did not become more similar to their models over the season, and the bellbird's own song became more bellbird-like to the classifier but not more consistent.
+The vocalizations of the focal individual were classified mostly as sympatric species, a bias not found in other bellbirds. Sounds resembling the Keel-billed Toucan (*Ramphastos sulfuratus*) and the Collared Aracari (*Pteroglossus torquatus*) were frequent in the first observations, and classification as bellbird increased over time. The imitations themselves did not become more similar to real vocalizations of their models, nor more consistent, over the season. The bellbird's own song, in contrast, became more similar to that of other bellbirds. It sang two regional dialects, Nicaragua and Talamanca, and the improvement came from its Talamanca vocalizations, the dialect it also tended to sing more often as the season progressed.
 
 ## Contents
 
 - **[Data preparation](scripts/birdnet_acoustic_data_prep.qmd)**: annotations, selection tables and export of the data for BirdNET
 - **[Model fitting](scripts/birdnet_model_fitting.qmd)**: training the BirdNET classifiers (seed 123) with 5-fold cross-validation grouped by recording, and the classification of the clips
-- **[Statistical analysis](scripts/statistical_analysis_cv.qmd)**: Bayesian models of the classifications and their change over time
-- **[Videos and images](media.qmd)**: videos and photos of the focal bellbird and of adult bellbirds, and the main figures
+- **[Statistical analysis](scripts/statistical_analysis_cv.qmd)**: Bayesian models of the classifications, the quality of the imitations and of the own song, and the dialects of the focal bellbird through time
+- **[Videos and images](media.qmd)**: videos and photos of the focal bellbird and a video of an adult Three-wattled Bellbird
 - **Presentation**: slides of the talk, in [English](presentation_en.qmd) and [Spanish](presentation.qmd), with the spectrograms and their sounds
 
 ## Main results

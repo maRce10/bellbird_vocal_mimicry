@@ -82,10 +82,11 @@ write.csv(grid, file.path(out_data, "temporal_curves.csv"), row.names = FALSE)
 # ---- quality of the imitations and of the own song through time --------------------------
 # acoustic similarity (mean cosine similarity of the generic BirdNET embedding to the 5 most similar
 # reference clips of the species) and consistency (mean cosine similarity to each of the other clips
-# of the same type recorded the same day) of each assigned focal clip, and their
-# population-level trends at average SNR. Final models of statistical_analysis_cv.qmd
-qfits <- list(similarity = readRDS("data/processed/cv_fits/imitation_knn_snr2_through_time.rds"),
-              consistency = readRDS("data/processed/cv_fits/consistency_pairwise_by_type_through_time.rds"))
+# of the same type recorded the same day) of each assigned focal clip, and their population-level
+# trends at average long-window SNR, averaged over recording equipment in proportion to its number of
+# clips. Final models of statistical_analysis_cv.qmd (long-window SNR and equipment as covariates)
+qfits <- list(similarity = readRDS("data/processed/cv_fits/imitation_knn_snrlong_equipment_through_time.rds"),
+              consistency = readRDS("data/processed/cv_fits/consistency_pairwise_snrlong_equipment_through_time.rds"))
 resp <- c(similarity = "knn", consistency = "consistency")
 spp_levels <- levels(qfits$similarity$data$species)
 qpoints <- qcurves <- qslopes <- list()
@@ -94,10 +95,13 @@ for (m in names(qfits)) {
   d$date <- as.Date(d$julian_day - 1, origin = "2020-01-01")
   qpoints[[m]] <- data.frame(date = d$date, species = as.character(d$species), measure = m, value = d[[resp[[m]]]])
   g <- expand.grid(julian_day = seq(min(d$julian_day), max(d$julian_day), length.out = 60), species = spp_levels,
-                   stringsAsFactors = FALSE)
-  g$snr <- mean(d$snr); g$snr_long <- mean(d$snr_long)
-  if (!is.null(d$n_group)) g$n_group <- exp(mean(log(d$n_group)))
+                   equipment = sort(unique(d$equipment)), stringsAsFactors = FALSE)
+  g$snr_long <- mean(d$snr_long)
+  w <- as.numeric(table(d$equipment)[g$equipment]) / nrow(d)
   ep <- posterior_epred(qfits[[m]], newdata = g, re_formula = NA) * sd(d[[resp[[m]]]]) + mean(d[[resp[[m]]]])
+  key <- paste(g$julian_day, g$species)
+  ep <- t(rowsum(t(ep) * w, key, reorder = FALSE))
+  g <- g[!duplicated(key), ]
   qcurves[[m]] <- data.frame(date = as.Date(g$julian_day - 1, origin = "2020-01-01"), species = g$species, measure = m,
                              value = colMeans(ep), low = apply(ep, 2, quantile, 0.025), high = apply(ep, 2, quantile, 0.975))
   post <- as_draws_df(qfits[[m]])
@@ -114,7 +118,7 @@ write.csv(do.call(rbind, qslopes), file.path(out_data, "quality_slopes.csv"), ro
 # ---- dialects of the own song through time -----------------------------------------------
 # A: daily proportion of Talamanca rather than Nicaragua own-song clips and the Bernoulli trend
 # (focal_dialect_through_time); B: neighbour similarity of each clip to the reference clips of its
-# assigned dialect and its trends at average SNR (own_song_similarity_within_dialect_through_time)
+# assigned dialect and its trends at average long-window SNR, averaged over equipment (own_song_similarity_within_dialect_snrlong_equipment_through_time)
 fd <- read.csv("data/processed/focal_dialects.csv")
 fd$date <- as.Date(fd$date)
 nt <- fd[fd$dialect %in% c("Nicaragua", "Talamanca"), ]
@@ -129,13 +133,18 @@ write.csv(data.frame(date = d_days, prop = colMeans(ep), low = apply(ep, 2, quan
                      high = apply(ep, 2, quantile, 0.975)),
           file.path(out_data, "dialect_curve.csv"), row.names = FALSE)
 
-m11 <- readRDS("data/processed/cv_fits/own_song_similarity_within_dialect_through_time.rds")
+m11 <- readRDS("data/processed/cv_fits/own_song_similarity_within_dialect_snrlong_equipment_through_time.rds")
 d11 <- m11$data
 write.csv(data.frame(date = as.Date(d11$julian_day - 1, origin = "2020-01-01"), dialect = as.character(d11$dialect),
                      value = d11$knn_d), file.path(out_data, "dialect_similarity_points.csv"), row.names = FALSE)
-g <- expand.grid(julian_day = d_jd, dialect = c("Nicaragua", "Talamanca"), stringsAsFactors = FALSE)
-g$snr <- mean(d11$snr); g$snr_long <- mean(d11$snr_long)
+g <- expand.grid(julian_day = d_jd, dialect = c("Nicaragua", "Talamanca"), equipment = sort(unique(d11$equipment)),
+                 stringsAsFactors = FALSE)
+g$snr_long <- mean(d11$snr_long)
+w <- as.numeric(table(d11$equipment)[g$equipment]) / nrow(d11)
 ep <- posterior_epred(m11, newdata = g, re_formula = NA) * sd(d11$knn_d) + mean(d11$knn_d)
+key <- paste(g$julian_day, g$dialect)
+ep <- t(rowsum(t(ep) * w, key, reorder = FALSE))
+g <- g[!duplicated(key), ]
 write.csv(data.frame(date = as.Date(g$julian_day - 1, origin = "2020-01-01"), dialect = g$dialect, value = colMeans(ep),
                      low = apply(ep, 2, quantile, 0.025), high = apply(ep, 2, quantile, 0.975)),
           file.path(out_data, "dialect_similarity_curves.csv"), row.names = FALSE)

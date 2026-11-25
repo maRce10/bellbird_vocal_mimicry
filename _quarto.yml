@@ -12,13 +12,9 @@ project:
   resources:
     - presentation/presentation.html
     - presentation/presentation_en.html
-    - presentation/images/mimic_campana.mp4
-    - presentation/images/mimic_aracari.mp4
-    - presentation/images/hanging_with_models_web.mp4
     - presentation/images/mimetic_and_toucan.mp4
     - presentation/images/focal_spectrogram_black_en.mp4
     - presentation/images/adult_bellbird_spectrogram_short_black_en.mp4
-    - presentation/images/adulto_monteverde.mp4
 
 execute:
   freeze: auto
