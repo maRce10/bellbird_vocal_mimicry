@@ -148,13 +148,16 @@ plot_conf <- function(file, species_order, text_size = 5, draw_w = 1, draw_h = 0
                      ifelse(species_order %in% allopatric, type_cols[["Allopatric"]], "black"))
     html <- setNames(sprintf("<i style='color:%s'>%s</i>", col_sp, short), short)
     d$label <- sprintf("%.2f", d$proportion)
-    d$label[d$label == "0.00"] <- "0"
+    d$label[d$Freq > 0 & d$proportion < 0.005] <- "<0.01"
+    d$label[d$Freq == 0] <- ""
     d$text_col <- ifelse(d$proportion > 0.6, "white",
                          ifelse(d$proportion < 0.05 & as.character(d$reference) != as.character(d$predicted),
                                 "grey60", "black"))
     ggplot(d, aes(x = reference, y = predicted, fill = proportion)) +
         geom_tile(colour = "white", linewidth = 0.6) +
-        geom_text(aes(label = label, colour = text_col), size = text_size, family = font_family) +
+        # "<0.01" is wider than the other labels, so it is drawn smaller to fit its cell
+        geom_text(aes(label = label, colour = text_col), size = ifelse(grepl("<", d$label), text_size * 0.8, text_size),
+                  family = font_family) +
         (if (draw_side) lapply(seq_len(n), function(i) annotation_custom(
             sp_grob(species_order[i], draw_w, draw_h, x = grid::unit(0, "npc") - grid::unit(0.15, "cm"), hjust = 1),
             xmin = 0.5, xmax = 0.5, ymin = n + 1 - i - 0.45, ymax = n + 1 - i + 0.45))
@@ -764,6 +767,37 @@ cat("\n::: {.r-stack}\n", paste(img_md, collapse = "\n\n"), "\n:::\n", sep = "")
 **About 40 s.** We retrained BirdNET, a network already trained on thousands of species, with our own classes. We used model V2.4 (BirdNET-Analyzer 2.4.0), the version before the current one. We used 2-second examples of each species, and evaluated them with 5-fold cross-validation: the recordings are split into five groups, and each group is classified by a model trained with the other four, so every vocalization is classified by a model that never heard its recording. We trained two models: one with the sympatric species, their allopatric relatives and the bellbird, and another with only the sympatric species and the bellbird.
 :::
 
+## Discriminating sympatric + allopatric species {.desempeno .titulo-pequeno}
+
+```{r}
+#| fig-width: 9
+#| fig-height: 6.3
+order7 <- c("Ramphastos sulfuratus", "Ramphastos brevis", "Pteroglossus torquatus",
+            "Pteroglossus erythropygius", "Psarocolius montezuma", "Psarocolius guatimozinus",
+            "Procnias tricarunculatus")
+pair_y <- c(6.5, 4.5, 2.5)
+pair_lab <- c("Toucans", "Aracaris", "Oropendolas")
+conf_box_x <- (-4 + 7.62) / 2; conf_box_w <- 7.62 + 4
+plot_conf("./data/confusion_sympatric_allopatric.csv", order7, text_size = 6.2, draw_side = TRUE) +
+    lapply(pair_y, function(y) box(conf_box_x, y, conf_box_w, 1.9, NA, grey_box, lwd = 2)) +
+    annotate("text", x = 8, y = pair_y, label = pair_lab, hjust = 0, size = 6.2,
+             family = font_family, colour = deck_cols[["texto"]]) +
+    annotate("point", x = c(1.6, 4.6), y = 8.05, shape = 15, size = 6.5,
+             colour = type_cols[c("Sympatric", "Allopatric")]) +
+    annotate("text", x = c(1.6, 4.6) + 0.3, y = 8.05, label = c("Sympatric", "Allopatric"),
+             hjust = 0, size = 6.6, family = font_family, colour = type_cols[c("Sympatric", "Allopatric")]) +
+    theme(plot.margin = margin(t = 40, r = 140, b = 5, l = 5),
+          axis.title.y = element_text(margin = margin(r = 28)))
+```
+
+::: {.fuente}
+`r num(nums$reference_clips)` vocalizations, 5-fold cross-validation (each classified by a model that never heard its recording). Empty cells: no vocalizations
+:::
+
+::: {.notes}
+**About 20 s.** Model 1 includes the seven classes: the three sympatric species, their allopatric relatives and other bellbirds. It is the one that allows comparing sympatric and allopatric species. The diagonal is high: it tells the species apart well; the largest confusion is between the two aracaris.
+:::
+
 ## Similarity to sympatric vs allopatric species {.titulo-pequeno}
 
 ```{r}
@@ -834,7 +868,7 @@ bias_plot(show_other = FALSE)
 </div>
 
 ::: {.notes}
-**By 7:00.** The main result, first for the focal bellbird: the vast majority of its heterospecific classifications fall on the sympatric species, above all the Keel-billed Toucan and the Collared Aracari.
+**By 7:20.** The main result, first for the focal bellbird: the vast majority of its heterospecific classifications fall on the sympatric species, above all the Keel-billed Toucan and the Collared Aracari.
 :::
 
 ## Similarity to sympatric vs allopatric species {.titulo-pequeno}
@@ -849,7 +883,22 @@ bias_plot(show_other = TRUE)
 </div>
 
 ::: {.notes}
-**By 7:30.** Now the other bellbirds: no such bias. When the focal bellbird is classified as another species, 93% of the time it is the sympatric one (95% CI: 90–95%), about 10 times more than its allopatric relative (807 vs 80 vocalizations); by chance we would expect half and half. The other bellbirds, each classified by a model that never heard its recording, are almost never classified as another species: 9 of 800 vocalizations. This supports genuine mimicry.
+**By 7:50.** Now the other bellbirds: no such bias. When the focal bellbird is classified as another species, 93% of the time it is the sympatric one (95% CI: 90–95%), about 10 times more than its allopatric relative (807 vs 80 vocalizations); by chance we would expect half and half. The other bellbirds, each classified by a model that never heard its recording, are almost never classified as another species: 9 of 800 vocalizations. This supports genuine mimicry.
+:::
+
+## Discriminating sympatric species {.desempeno .titulo-pequeno}
+
+```{r}
+#| fig-width: 5.6
+#| fig-height: 5
+order4 <- c("Ramphastos sulfuratus", "Pteroglossus torquatus", "Psarocolius montezuma",
+            "Procnias tricarunculatus")
+plot_conf("./data/confusion_sympatric.csv", order4, text_size = 6.5, draw_w = 1.4, draw_h = 1.15, draw_side = TRUE)
+```
+
+
+::: {.notes}
+**About 15 s.** Model 2 has only the sympatric species and the bellbird, to estimate which of the model species each vocalization resembles most. It also tells the four classes apart well.
 :::
 
 ## Similarity to sympatric species {.desempeno .titulo-pequeno}
@@ -884,7 +933,7 @@ ggplot(sp_bars, aes(x = species, y = prop, fill = bird)) +
 ```
 
 ::: {.notes}
-**By 8:05.** A second classifier, with only the sympatric species, shows how much the bellbird resembles each one: mostly the Keel-billed Toucan, then the Collared Aracari, and very little the oropendola. In the other bellbirds these classifications are practically absent.
+**By 8:40.** A second classifier, with only the sympatric species, shows how much the bellbird resembles each one: mostly the Keel-billed Toucan, then the Collared Aracari, and very little the oropendola. In the other bellbirds these classifications are practically absent.
 :::
 
 ## Change over time
@@ -945,7 +994,7 @@ ggplot(points[points$prop > 0, ], aes(x = date, y = prop, color = species, fill 
 
 
 ::: {.notes}
-**By 8:55.** The first observations are dominated by toucan-like sounds and, to a lesser extent, aracari-like sounds. Over time the probability of being classified as a bellbird increases (the only clear trend). The toucan tends to decrease, but with the day-to-day variation its interval includes zero; the aracari shows no clear trend either.
+**By 9:30.** The first observations are dominated by toucan-like sounds and, to a lesser extent, aracari-like sounds. Over time the probability of being classified as a bellbird increases (the only clear trend). The toucan tends to decrease, but with the day-to-day variation its interval includes zero; the aracari shows no clear trend either.
 :::
 
 ## Did the imitations improve? {.titulo-pequeno}
@@ -1103,7 +1152,7 @@ Full-screen video (32 s, with sound): the focal bellbird next to the aracari and
 
 
 ::: {.notes}
-**By 9:45.** A suboscine (Tyranni) that incorporates sounds of other species and then moves on to those of its own species shows a more complex vocal development than expected. If this trajectory is confirmed, mimicry could be a developmental stage and not a permanent trait of the repertoire.
+**By 10:20.** A suboscine (Tyranni) that incorporates sounds of other species and then moves on to those of its own species shows a more complex vocal development than expected. If this trajectory is confirmed, mimicry could be a developmental stage and not a permanent trait of the repertoire.
 :::
 
 
@@ -1138,7 +1187,7 @@ Full-screen video (32 s, with sound): the focal bellbird next to the aracari and
 
 ::::
 ::: {.notes}
-**By 11:10.** Thank everyone and move to questions. It can stay on screen during the questions: the QR code opens this presentation on the project site.
+**By 11:45.** Thank everyone and move to questions. It can stay on screen during the questions: the QR code opens this presentation on the project site.
 :::
 
 ## References {#references visibility="uncounted" .no-linea-titulo .foto-derecha background-image="images/campana_david1_cropped.jpeg" background-size="auto 100%" background-position="right center" background-repeat="no-repeat"}
@@ -1157,49 +1206,3 @@ Full-screen video (32 s, with sound): the focal bellbird next to the aracari and
 </ol>
 <div class="ref-volver"><a href="#/credits-and-resources">&#8592; Back to resources</a></div>
 ```
-
-## Discriminating sympatric + allopatric species {.desempeno .titulo-pequeno visibility="uncounted"}
-
-```{r}
-#| fig-width: 9
-#| fig-height: 6.3
-order7 <- c("Ramphastos sulfuratus", "Ramphastos brevis", "Pteroglossus torquatus",
-            "Pteroglossus erythropygius", "Psarocolius montezuma", "Psarocolius guatimozinus",
-            "Procnias tricarunculatus")
-pair_y <- c(6.5, 4.5, 2.5)
-pair_lab <- c("Toucans", "Aracaris", "Oropendolas")
-conf_box_x <- (-4 + 7.62) / 2; conf_box_w <- 7.62 + 4
-plot_conf("./data/confusion_sympatric_allopatric.csv", order7, text_size = 6.2, draw_side = TRUE) +
-    lapply(pair_y, function(y) box(conf_box_x, y, conf_box_w, 1.9, NA, grey_box, lwd = 2)) +
-    annotate("text", x = 8, y = pair_y, label = pair_lab, hjust = 0, size = 6.2,
-             family = font_family, colour = deck_cols[["texto"]]) +
-    annotate("point", x = c(1.6, 4.6), y = 8.05, shape = 15, size = 6.5,
-             colour = type_cols[c("Sympatric", "Allopatric")]) +
-    annotate("text", x = c(1.6, 4.6) + 0.3, y = 8.05, label = c("Sympatric", "Allopatric"),
-             hjust = 0, size = 6.6, family = font_family, colour = type_cols[c("Sympatric", "Allopatric")]) +
-    theme(plot.margin = margin(t = 40, r = 140, b = 5, l = 5),
-          axis.title.y = element_text(margin = margin(r = 28)))
-```
-
-::: {.fuente}
-`r num(nums$reference_clips)` vocalizations, 5-fold cross-validation (each classified by a model that never heard its recording)
-:::
-
-::: {.notes}
-**About 20 s.** Model 1 includes the seven classes: the three sympatric species, their allopatric relatives and other bellbirds. It is the one that allows comparing sympatric and allopatric species. The diagonal is high: it tells the species apart well; the largest confusion is between the two aracaris.
-:::
-
-## Discriminating sympatric species {.desempeno .titulo-pequeno visibility="uncounted"}
-
-```{r}
-#| fig-width: 5.6
-#| fig-height: 5
-order4 <- c("Ramphastos sulfuratus", "Pteroglossus torquatus", "Psarocolius montezuma",
-            "Procnias tricarunculatus")
-plot_conf("./data/confusion_sympatric.csv", order4, text_size = 6.5, draw_w = 1.4, draw_h = 1.15, draw_side = TRUE)
-```
-
-
-::: {.notes}
-**About 15 s.** Model 2 has only the sympatric species and the bellbird, to estimate which of the model species each vocalization resembles most. It also tells the four classes apart well.
-:::

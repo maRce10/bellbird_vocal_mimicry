@@ -77,12 +77,18 @@ ci <- function(x, digits = 2) paste0(round(median(x), digits), " [95% UI: ",
                                       round(quantile(x, 0.975), digits), "]")
 ```
 
-# Purpose {.unnumbered}
+::: {.alert .alert-info}
+
+# Purpose {.unnumbered .unlisted}
 
 - Test whether the vocalizations of the focal bellbird are classified more often as the sympatric species it could have imitated than as their allopatric relatives, and more often than the vocalizations of other bellbirds
 - Test whether the classifications of the focal bellbird changed over time
+- Test whether the imitations and the own song became more similar to real vocalizations of the species and more consistent over time
+- Identify the dialects of the focal bellbird's own song and test whether their use and quality changed over time
 
 Classifications come from the cross-validated BirdNET classifiers of the [model fitting](birdnet_model_fitting.qmd) report. The fits are saved in `data/processed/cv_fits/`.
+
+:::
 
 # Cross-validated classifiers
 
@@ -1143,9 +1149,9 @@ cat("- Neighbour similarity to Three-wattled Bellbird in the same Nicaragua and 
 
 :::
 
-# Precision of the trends and nonlinear change
+# Precision of the trends
 
-Several trends in the vocal-quality and dialect analyses have intervals that include zero. With only 7–10 recording days per vocalization type in some analyses, such intervals may reflect a lack of precision rather than an absence of change. This section quantifies how large a change the data can rule out, and whether a straight line through time hides a change that is not linear (e.g. an early improvement that then levels off).
+Several trends in the vocal-quality and dialect analyses have intervals that include zero. With only 7–10 recording days per vocalization type in some analyses, such intervals may reflect a lack of precision rather than an absence of change. This section quantifies how large a change the data can rule out.
 
 ## How large a change the data can rule out
 
@@ -1190,86 +1196,6 @@ kable(prec, digits = 2, row.names = FALSE,
       caption = "Slopes through time (SD per SD of date), the change they imply over the whole season, the posterior probability that the slope is negligible (|slope| < 0.1) and the approximate minimum detectable slope")
 ```
 
-## Nonlinear change through time
-
-The same models were refitted with a separate smooth function of date (thin-plate spline, `k = 4`) for each vocalization type or dialect instead of a straight line, keeping the covariates and random effects. The models are compared with approximate leave-one-out cross-validation (positive differences favour the spline); the dashed lines in the plot are the linear fits.
-
-```{r spline models}
-fit_s <- function(formula, data, name) brm(formula, data = data, prior = priors4, chains = chains, iter = iter, cores = cores,
-                                           control = list(adapt_delta = 0.999, max_treedepth = 12), seed = 123,
-                                           file = file.path(fit_dir, name), file_refit = "on_change")
-spline_versions <- list(
-    sim = list(lin = mod_sim, data = q_m, group = "species", measure = "Similarity to the assigned species", y = "knn",
-               fit = fit_s(scale(knn) ~ species + s(julian_day, by = species, k = 4) + scale(snr_long) + equipment + (1 | day/recording),
-                           q_m, "imitation_knn_snrlong_equipment_spline_through_time")),
-    cons = list(lin = mod_cons, data = qc, group = "species", measure = "Consistency", y = "consistency",
-                fit = fit_s(scale(consistency) ~ species + s(julian_day, by = species, k = 4) + scale(snr_long) + equipment + (1 | day/recording),
-                            qc, "consistency_pairwise_snrlong_equipment_spline_through_time")),
-    d_sim = list(lin = mod11$sim, data = fnt_l, group = "dialect", measure = "Similarity to the assigned dialect", y = "knn_d",
-                 fit = fit_s(scale(knn_d) ~ dialect + s(julian_day, by = dialect, k = 4) + scale(snr_long) + equipment + (1 | day/recording),
-                             fnt_l, "own_song_similarity_within_dialect_snrlong_equipment_spline_through_time")),
-    d_cons = list(lin = mod11$cons, data = bd_l, group = "dialect", measure = "Consistency within day × dialect", y = "consistency",
-                  fit = fit_s(scale(consistency) ~ dialect + s(julian_day, by = dialect, k = 4) + scale(snr_long) + equipment + (1 | day/recording),
-                              bd_l, "own_song_consistency_pairwise_within_dialect_snrlong_equipment_spline_through_time")))
-for (v in names(spline_versions)) {
-    spline_versions[[v]]$lin <- add_criterion(spline_versions[[v]]$lin, "loo")
-    spline_versions[[v]]$fit <- add_criterion(spline_versions[[v]]$fit, "loo")
-}
-```
-
-```{r spline diagnostics}
-spline_diag <- do.call(rbind, lapply(spline_versions, function(v) {
-    lc <- loo_compare(v$fit, v$lin)
-    sgn <- if (rownames(lc)[1] == "v$fit") 1 else -1
-    data.frame(Measure = v$measure, `Max Rhat` = max(rhat(v$fit), na.rm = TRUE),
-               `Divergent transitions` = sum(nuts_params(v$fit)$Value[nuts_params(v$fit)$Parameter == "divergent__"]),
-               `ELPD difference (spline − linear)` = sgn * -lc[2, "elpd_diff"], SE = lc[2, "se_diff"], check.names = FALSE, row.names = NULL)
-}))
-kable(spline_diag, digits = 2, row.names = FALSE, caption = "Convergence of the spline models and leave-one-out comparison with the linear models")
-```
-
-```{r spline plot}
-#| fig-width: 10
-#| fig-height: 7
-
-curve_data <- function(v, fit, shape) {
-    d <- v$data
-    grid <- expand.grid(julian_day = seq(min(d$julian_day), max(d$julian_day), length.out = 60),
-                        g = levels(factor(d[[v$group]])), stringsAsFactors = FALSE)
-    names(grid)[2] <- v$group
-    grid$snr_long <- mean(d$snr_long)
-    # averaged over recording equipment in proportion to its number of clips (as in the slides and figures)
-    eq <- table(d$equipment)
-    grid <- merge(grid, data.frame(equipment = names(eq), w = as.numeric(eq) / nrow(d)), by = NULL)
-    key <- paste(grid$julian_day, grid[[v$group]])
-    ep <- posterior_epred(fit, newdata = grid, re_formula = NA)
-    ep <- t(rowsum(t(ep) * grid$w, key, reorder = FALSE))
-    grid <- grid[!duplicated(key), ]
-    data.frame(Measure = v$measure, Group = grid[[v$group]], date = as.Date(grid$julian_day - 1, origin = "2020-01-01"),
-               value = colMeans(ep), low = apply(ep, 2, quantile, 0.025), high = apply(ep, 2, quantile, 0.975), Shape = shape)
-}
-sc <- do.call(rbind, lapply(spline_versions, function(v) rbind(curve_data(v, v$fit, "Spline"), curve_data(v, v$lin, "Linear"))))
-sp_pts <- do.call(rbind, lapply(spline_versions, function(v) {
-    y <- as.numeric(scale(v$data[[v$y]]))
-    a <- aggregate(y ~ julian_day + g, data.frame(y = y, julian_day = v$data$julian_day, g = v$data[[v$group]]), mean)
-    data.frame(Measure = v$measure, Group = a$g, date = as.Date(a$julian_day - 1, origin = "2020-01-01"), value = a$y)
-}))
-grp_cols <- c(`Keel-billed Toucan` = mako(10)[3], `Collared Aracari` = mako(10)[5], `Three-wattled Bellbird` = mako(10)[7],
-              Nicaragua = magma(10)[4], Talamanca = magma(10)[7])
-ggplot(sc[sc$Shape == "Spline", ], aes(date, value, colour = Group, fill = Group)) +
-    geom_point(data = sp_pts, size = 1.6, alpha = 0.6) +
-    geom_ribbon(aes(ymin = low, ymax = high), alpha = 0.15, colour = NA) +
-    geom_line(linewidth = 1) +
-    geom_line(data = sc[sc$Shape == "Linear", ], linetype = "dashed", linewidth = 0.6) +
-    facet_wrap(~ Measure, scales = "free_y") +
-    scale_colour_manual(values = grp_cols, name = NULL) + scale_fill_manual(values = grp_cols, name = NULL) +
-    scale_x_date(date_breaks = "2 months", date_labels = "%b") +
-    labs(x = "Date", y = "Standardized value (at average SNR)") +
-    theme(strip.background = element_blank(), legend.position = "top")
-```
-
-Points: daily means of the standardized measure. Solid lines and bands: spline fits with 95% intervals; dashed lines: linear fits.
-
 ::: {.alert .alert-info}
 
 #### Summary
@@ -1283,8 +1209,6 @@ for (m in unique(prec$Measure)) {
     cat("- ", m, ": ", paste(sprintf("%s %s (slope %s [%s–%s], P(negligible) = %.2f, minimum detectable slope %.2f)", r$Group, tolower(r$Conclusion),
                                        f2(r$Slope), f2(r[["2.5%"]]), f2(r[["97.5%"]]), r[["P(inside ROPE)"]], r[["Minimum detectable slope"]]), collapse = "; "), "\n", sep = "")
 }
-cat("- Spline vs linear models (ELPD difference ± SE, positive favours the spline): ",
-    paste(sprintf("%s %.1f ± %.1f", spline_diag$Measure, spline_diag[["ELPD difference (spline − linear)"]], spline_diag$SE), collapse = "; "), "\n", sep = "")
 ```
 
 :::

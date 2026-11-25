@@ -46,16 +46,21 @@ configs <- random_configs$config
 short <- function(x) ifelse(x == "Unassigned", x, sub("^(\\w)\\w+ ", "\\1. ", x))
 ```
 
-# Purpose
+::: {.alert .alert-info}
 
-- Train the two custom BirdNET classifiers from code, with a fixed random seed (123), so the fitting is reproducible
+# Purpose {.unnumbered .unlisted}
+
+- Train the three custom BirdNET classifiers from code, with a fixed random seed (123), so the fitting is reproducible
 - Choose the hyperparameters (among 30 configurations drawn at random) and the classification thresholds, and estimate the performance of the classifiers, by 5-fold cross-validation grouped by recording
 - Classify the vocalizations of other bellbirds and of the focal bellbird with models that never heard them
 
-The two classifiers are:
+The three classifiers are:
 
 - **Sympatric + allopatric**: the three sympatric species the bellbird could have imitated (Keel-billed Toucan, Collared Aracari and Montezuma Oropendola), their closely related allopatric species (Choco Toucan, Pale-mandibled Aracari and Chestnut-headed Oropendola) and the Three-wattled Bellbird
 - **Sympatric only**: the three sympatric species and the Three-wattled Bellbird
+- **Dialect**: the four dialects of the Three-wattled Bellbird (Monteverde, Nicaragua, Panama and Talamanca), trained on other bellbirds of known dialect and used to assign the focal bellbird's own-species vocalizations to a dialect ([Dialect classifier](#dialect-classifier))
+
+:::
 
 # Data
 
@@ -360,6 +365,27 @@ symp_het <- setdiff(sympatric_spp, "Procnias tricarunculatus")
 sh <- c(Sympatric = sum(sa %in% symp_het), Allopatric = sum(sa %in% allo))
 data.frame(t(sh), `% sympatric` = round(100 * sh[[1]] / sum(sh), 1),
            `Sympatric : allopatric` = round(sh[[1]] / sh[[2]], 1), check.names = FALSE)
+```
+
+# Dialect classifier
+
+The dialect classifier distinguishes the four dialects of the Three-wattled Bellbird. It is trained on the reference bellbird clips of recordings of known dialect, with the same pipeline as the species classifiers: 5 folds grouped by recording and stratified by dialect (seed 123, [`scripts/birdnet_dialect_folds.py`](https://github.com/maRce10/bellbird_vocal_mimicry/blob/master/scripts/birdnet_dialect_folds.py)), the same 30 random configurations, the same selection rule (macro AUPRC with the one-standard-error rule) and per-dialect thresholds that maximize F1. The selection, its out-of-fold performance and the dialects of the focal bellbird are reported in the [statistical analysis](statistical_analysis_cv.qmd#dialect-classifier).
+
+```{r dialect data}
+dfolds <- read.csv("./data/processed/birdnet_cv_dialect/folds.csv")
+dt <- as.data.frame.matrix(table(dfolds$species, dfolds$fold))
+names(dt) <- paste("Fold", names(dt))
+dt$Recordings <- as.integer(tapply(dfolds$recording, dfolds$species, function(x) length(unique(x)))[rownames(dt)])
+dt$Clips <- as.integer(table(dfolds$species)[rownames(dt)])
+kable(dt, caption = "Clips of each dialect in each fold, and recordings and clips in total")
+```
+
+```{bash dialect cv}
+#| eval: false
+#| code-fold: false
+
+# from the project root, after the species classifiers (it reuses their random configurations)
+MODELS="dialect" bash scripts/birdnet_cv.sh all   # folds, 150 trainings (30 configurations x 5 folds) and classifications
 ```
 
 # Takeaways
